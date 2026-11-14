@@ -81,7 +81,8 @@ class DashboardState:
             "exit_ticks": self.config.exit_ticks,
             "current_profit": self.current_profit,
             "recent_trades": self.recent_trades[:15],
-            "latest_log": self.latest_log
+            "latest_log": self.latest_log,
+            "streaks": self.risk.get_streaks_summary()
         }
 
     async def notify_clients(self):

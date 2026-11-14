@@ -164,6 +164,70 @@
       </div>
     </div>
 
+    <!-- Seção de Distribuição de Streaks & Frequência de Ocorrências -->
+    <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 shadow-lg">
+      <div class="flex flex-wrap items-center justify-between gap-4 mb-4 pb-3 border-b border-slate-800/80">
+        <div class="flex items-center gap-2.5">
+          <div class="w-8 h-8 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+            <i data-lucide="flame" class="w-4 h-4"></i>
+          </div>
+          <div>
+            <h2 class="text-sm font-bold text-slate-200">Frequência de Streaks (Sequências Consecutivas)</h2>
+            <p class="text-[11px] text-slate-400">Monitoramento da repetição de sequências de vitórias e derrotas da sessão</p>
+          </div>
+        </div>
+
+        <!-- Indicador de Sequência Atual e Recordes -->
+        <div class="flex items-center gap-3">
+          <div class="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs flex items-center gap-2">
+            <span class="text-slate-400">Sequência Atual:</span>
+            <span id="streak-current-badge" class="font-mono font-bold text-slate-400 px-2 py-0.5 rounded bg-slate-800">
+              0
+            </span>
+          </div>
+          <div class="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs flex items-center gap-2">
+            <span class="text-slate-400">Recorde Wins:</span>
+            <span id="streak-max-win" class="font-mono font-bold text-emerald-400">0W</span>
+          </div>
+          <div class="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs flex items-center gap-2">
+            <span class="text-slate-400">Maior Sequência Loss:</span>
+            <span id="streak-max-loss" class="font-mono font-bold text-rose-400">0L</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Duas Colunas: Derrotas Consecutivas e Vitórias Consecutivas -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <!-- Sequências de Derrotas (Losses) -->
+        <div class="bg-slate-950/70 border border-rose-950/40 rounded-xl p-3.5">
+          <div class="flex items-center justify-between mb-2">
+            <div class="flex items-center gap-2 text-xs font-semibold text-rose-400">
+              <span class="w-2 h-2 rounded-full bg-rose-500"></span>
+              Sequências de Derrotas (Losses)
+            </div>
+            <span class="text-[10px] text-slate-500">Ex: 3L (5x) = 3 derrotas seguidas ocorreram 5 vezes</span>
+          </div>
+          <div id="loss-streaks-container" class="flex flex-wrap gap-2 min-h-[38px] items-center">
+            <span class="text-xs text-slate-600 italic">Nenhuma sequência de derrota registrada.</span>
+          </div>
+        </div>
+
+        <!-- Sequências de Vitórias (Wins) -->
+        <div class="bg-slate-950/70 border border-emerald-950/40 rounded-xl p-3.5">
+          <div class="flex items-center justify-between mb-2">
+            <div class="flex items-center gap-2 text-xs font-semibold text-emerald-400">
+              <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+              Sequências de Vitórias (Wins)
+            </div>
+            <span class="text-[10px] text-slate-500">Ex: 8W (3x) = 8 vitórias seguidas ocorreram 3 vezes</span>
+          </div>
+          <div id="win-streaks-container" class="flex flex-wrap gap-2 min-h-[38px] items-center">
+            <span class="text-xs text-slate-600 italic">Nenhuma sequência de vitória registrada.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Grid Inferior: Tabela de Operações + Console de Eventos -->
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
       
@@ -328,6 +392,54 @@
         ticksDisplay.innerText = `0 / ${data.exit_ticks || 6}`;
         profitDisplay.innerText = "$0.00";
         profitDisplay.className = "text-lg font-extrabold font-mono text-slate-500";
+      }
+
+      // Atualização das Streaks e Frequências
+      if (data.streaks) {
+        const s = data.streaks;
+        
+        // Sequência Atual Badge
+        const curBadge = document.getElementById("streak-current-badge");
+        if (s.current_streak_type === "W" && s.current_streak_val > 0) {
+          curBadge.className = "font-mono font-bold text-emerald-400 px-2 py-0.5 rounded bg-emerald-950 border border-emerald-500/30";
+          curBadge.innerText = `🔥 ${s.current_streak_val}W`;
+        } else if (s.current_streak_type === "L" && s.current_streak_val > 0) {
+          curBadge.className = "font-mono font-bold text-rose-400 px-2 py-0.5 rounded bg-rose-950 border border-rose-500/30";
+          curBadge.innerText = `❄️ ${s.current_streak_val}L`;
+        } else {
+          curBadge.className = "font-mono font-bold text-slate-400 px-2 py-0.5 rounded bg-slate-800";
+          curBadge.innerText = "0";
+        }
+
+        // Recordes
+        document.getElementById("streak-max-win").innerText = `${s.max_win_streak || 0}W`;
+        document.getElementById("streak-max-loss").innerText = `${s.max_loss_streak || 0}L`;
+
+        // Container de Derrotas
+        const lossCont = document.getElementById("loss-streaks-container");
+        if (s.loss_streaks_list && s.loss_streaks_list.length > 0) {
+          lossCont.innerHTML = s.loss_streaks_list.map(item => `
+            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-mono font-bold bg-rose-950/70 border border-rose-600/40 text-rose-300 shadow-sm shadow-rose-950/50">
+              <span>${item.streak}L</span>
+              <span class="px-1.5 py-0.5 rounded bg-rose-900/60 text-rose-200 text-[11px] font-semibold">${item.count}x</span>
+            </span>
+          `).join('');
+        } else {
+          lossCont.innerHTML = '<span class="text-xs text-slate-600 italic">Nenhuma sequência de derrota registrada.</span>';
+        }
+
+        // Container de Vitórias
+        const winCont = document.getElementById("win-streaks-container");
+        if (s.win_streaks_list && s.win_streaks_list.length > 0) {
+          winCont.innerHTML = s.win_streaks_list.map(item => `
+            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-mono font-bold bg-emerald-950/70 border border-emerald-600/40 text-emerald-300 shadow-sm shadow-emerald-950/50">
+              <span>${item.streak}W</span>
+              <span class="px-1.5 py-0.5 rounded bg-emerald-900/60 text-emerald-200 text-[11px] font-semibold">${item.count}x</span>
+            </span>
+          `).join('');
+        } else {
+          winCont.innerHTML = '<span class="text-xs text-slate-600 italic">Nenhuma sequência de vitória registrada.</span>';
+        }
       }
 
       // Histórico de Trades
