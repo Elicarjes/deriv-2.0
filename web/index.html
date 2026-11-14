@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Deriv Quant 2.0 | Dashboard em Tempo Real</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    .terminal-scrollbar::-webkit-scrollbar {
+      width: 5px;
+    }
+    .terminal-scrollbar::-webkit-scrollbar-track {
+      background: #090d16;
+    }
+    .terminal-scrollbar::-webkit-scrollbar-thumb {
+      background: #1e293b;
+      border-radius: 3px;
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 font-sans min-h-screen flex flex-col antialiased">
+
+  <!-- Header Fixo com Tamanho Estável (Zero Layout Shift) -->
+  <header class="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-50 px-6 py-3.5 flex flex-wrap items-center justify-between gap-4">
+    <div class="flex items-center space-x-3">
+      <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-emerald-500 to-cyan-500 flex items-center justify-center shadow-lg shadow-emerald-500/20">
+        <i data-lucide="cpu" class="w-5 h-5 text-slate-950"></i>
+      </div>
+      <div>
+        <h1 class="text-lg font-bold bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">
+          Deriv Quant 2.0
+        </h1>
+        <p class="text-[11px] text-slate-400 flex items-center gap-1.5">
+          <span class="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+          Event-Driven Streaming • Zero Polling
+        </p>
+      </div>
+    </div>
+
+    <!-- Barra de Status e Controles com Dimensões Fixas -->
+    <div class="flex items-center gap-3">
+      <!-- Identificação da Conta -->
+      <div class="bg-slate-800/80 border border-slate-700/80 rounded-lg px-3 py-1.5 text-xs flex items-center gap-2">
+        <span class="text-slate-400">Conta:</span>
+        <span id="account-id" class="font-mono font-semibold text-slate-200">DOT93505571</span>
+      </div>
+
+      <!-- Saldo da Conta em Tempo Real (Subscrição Nativa Deriv) -->
+      <div class="bg-slate-800/80 border border-slate-700/80 rounded-lg px-3 py-1.5 text-xs flex items-center gap-2 min-w-[170px] justify-between">
+        <span class="text-slate-400">Saldo:</span>
+        <span id="account-balance" class="font-mono font-bold text-emerald-400 text-sm">$0.00 USD</span>
+      </div>
+
+      <!-- Badge de Status com Largura Fixa (Não deforma a barra) -->
+      <div id="bot-status-badge" class="bg-slate-800 border border-slate-700 text-slate-300 text-xs px-3 py-1.5 rounded-lg font-medium flex items-center gap-2 w-28 justify-center">
+        <span id="bot-status-dot" class="w-2 h-2 rounded-full bg-slate-500"></span>
+        <span id="bot-status-text" class="truncate">Parado</span>
+      </div>
+
+      <!-- Botão Iniciar / Pausar com Largura Fixa -->
+      <button id="btn-toggle" onclick="toggleBot()" class="w-32 py-1.5 rounded-lg font-semibold text-xs flex items-center justify-center gap-2 transition shadow-lg bg-emerald-600 hover:bg-emerald-500 text-white">
+        <i data-lucide="play" class="w-4 h-4"></i>
+        <span>Iniciar Robô</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="flex-1 max-w-7xl w-full mx-auto p-6 space-y-6">
+
+    <!-- KPI Grid Superior -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <!-- PnL Diário -->
+      <div class="bg-slate-900/80 border border-slate-800/80 rounded-2xl p-5 shadow-lg">
+        <div class="flex items-center justify-between text-slate-400 text-xs mb-2">
+          <span>LUCRO/PREJUÍZO SESSÃO</span>
+          <i data-lucide="trending-up" class="w-4 h-4 text-emerald-400"></i>
+        </div>
+        <div id="pnl-value" class="text-3xl font-extrabold tracking-tight font-mono text-emerald-400">
+          +$0.00
+        </div>
+        <div class="text-[11px] text-slate-500 mt-2 flex items-center justify-between">
+          <span>Meta: <strong id="tp-target" class="text-emerald-400 font-mono">+$2.00</strong></span>
+          <span>Stop: <strong id="sl-target" class="text-rose-400 font-mono">-$2.00</strong></span>
+        </div>
+      </div>
+
+      <!-- Assertividade -->
+      <div class="bg-slate-900/80 border border-slate-800/80 rounded-2xl p-5 shadow-lg">
+        <div class="flex items-center justify-between text-slate-400 text-xs mb-2">
+          <span>ASSERTIVIDADE</span>
+          <i data-lucide="target" class="w-4 h-4 text-cyan-400"></i>
+        </div>
+        <div id="win-rate" class="text-3xl font-extrabold tracking-tight font-mono text-cyan-400">
+          0.0%
+        </div>
+        <div class="w-full bg-slate-800 rounded-full h-1.5 mt-3 overflow-hidden">
+          <div id="win-rate-bar" class="bg-cyan-500 h-1.5 rounded-full transition-all duration-300" style="width: 0%"></div>
+        </div>
+      </div>
+
+      <!-- Vitórias vs Derrotas -->
+      <div class="bg-slate-900/80 border border-slate-800/80 rounded-2xl p-5 shadow-lg">
+        <div class="flex items-center justify-between text-slate-400 text-xs mb-2">
+          <span>PLACAR</span>
+          <i data-lucide="activity" class="w-4 h-4 text-indigo-400"></i>
+        </div>
+        <div class="flex items-baseline gap-2">
+          <span id="wins-count" class="text-3xl font-extrabold text-emerald-400 font-mono">0W</span>
+          <span class="text-slate-600 font-mono text-lg">/</span>
+          <span id="losses-count" class="text-3xl font-extrabold text-rose-400 font-mono">0L</span>
+        </div>
+        <p class="text-[11px] text-slate-500 mt-2">
+          Total: <span id="total-trades" class="font-mono text-slate-300">0</span> ciclos
+        </p>
+      </div>
+
+      <!-- Ativo Campeão Atual -->
+      <div class="bg-slate-900/80 border border-slate-800/80 rounded-2xl p-5 shadow-lg">
+        <div class="flex items-center justify-between text-slate-400 text-xs mb-2">
+          <span>ATIVO ELEITO (ADAPTATIVO)</span>
+          <i data-lucide="shield-check" class="w-4 h-4 text-amber-400"></i>
+        </div>
+        <div id="active-asset-name" class="text-lg font-bold truncate text-slate-200">
+          Volatility 10
+        </div>
+        <div class="flex items-center justify-between text-[11px] mt-2 pt-2 border-t border-slate-800 text-slate-400">
+          <span id="lbl-survival-ticks">Sobrevivência 6T:</span>
+          <strong id="active-asset-rate" class="text-amber-400 font-mono">92.0%</strong>
+        </div>
+      </div>
+    </div>
+
+    <!-- Monitor de Trade em Execução com Altura Fixa (Sem tremer a tela) -->
+    <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 shadow-lg min-h-[92px] flex items-center justify-between">
+      <div class="flex items-center gap-4">
+        <div id="trade-indicator" class="w-10 h-10 rounded-xl bg-slate-800 flex items-center justify-center border border-slate-700">
+          <i data-lucide="clock" class="w-5 h-5 text-slate-400"></i>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <span id="trade-label" class="text-xs font-semibold uppercase tracking-wider text-slate-400">Aguardando Próxima Entrada</span>
+            <span id="live-contract-id" class="text-[11px] text-slate-500 font-mono"></span>
+          </div>
+          <div id="trade-asset-info" class="text-sm font-bold text-slate-200">
+            Robô pronto para operar no ativo campeão
+          </div>
+        </div>
+      </div>
+
+      <!-- Métricas do Contrato Ativo -->
+      <div class="flex items-center gap-8">
+        <div class="text-right">
+          <div class="text-[11px] text-slate-400">TICKS</div>
+          <div id="live-ticks-display" class="text-lg font-extrabold text-cyan-400 font-mono">0 / 6</div>
+        </div>
+        <div class="text-right min-w-[100px]">
+          <div class="text-[11px] text-slate-400">LUCRO FLUTUANTE</div>
+          <div id="live-profit-display" class="text-lg font-extrabold text-slate-400 font-mono">$0.00</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Grid Inferior: Tabela de Operações + Console de Eventos -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      
+      <!-- Histórico de Trades -->
+      <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 shadow-lg flex flex-col h-80">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="text-sm font-bold text-slate-300 flex items-center gap-2">
+            <i data-lucide="history" class="w-4 h-4 text-emerald-400"></i>
+            Histórico da Sessão
+          </h3>
+          <span class="text-[11px] text-slate-500">Atualizado via Eventos</span>
+        </div>
+
+        <div class="overflow-y-auto flex-1 terminal-scrollbar">
+          <table class="w-full text-left text-xs">
+            <thead class="text-slate-400 border-b border-slate-800 font-medium sticky top-0 bg-slate-900">
+              <tr>
+                <th class="pb-2">Hora</th>
+                <th class="pb-2">Ativo</th>
+                <th class="pb-2">Stake</th>
+                <th class="pb-2">Resultado</th>
+                <th class="pb-2 text-right">Lucro</th>
+              </tr>
+            </thead>
+            <tbody id="trades-table-body" class="divide-y divide-slate-800/60 font-mono">
+              <tr>
+                <td colspan="5" class="py-10 text-center text-slate-600 italic">Nenhum trade executado ainda.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Console de Logs em Tempo Real -->
+      <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 shadow-lg flex flex-col h-80">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="text-sm font-bold text-slate-300 flex items-center gap-2">
+            <i data-lucide="terminal" class="w-4 h-4 text-cyan-400"></i>
+            Eventos da API Deriv
+          </h3>
+          <span class="text-[11px] text-slate-500 font-mono">Stream Push</span>
+        </div>
+
+        <div id="terminal-logs" class="bg-slate-950 border border-slate-800/80 rounded-xl p-3 font-mono text-[11px] text-slate-300 flex-1 overflow-y-auto space-y-1 terminal-scrollbar">
+          <div class="text-slate-600">> Dashboard conectado via WebSocket reativo.</div>
+          <div class="text-slate-600">> Subscrição nativa de saldo e contratos ativada.</div>
+        </div>
+      </div>
+
+    </div>
+
+  </main>
+
+  <footer class="border-t border-slate-800/60 py-2.5 text-center text-[11px] text-slate-500">
+    Deriv Quant 2.0 • WebSocket Event-Driven • Sem Polling
+  </footer>
+
+  <script>
+    let isBotRunning = false;
+    let ws = null;
+
+    function initWebSocket() {
+      const loc = window.location;
+      const wsUri = (loc.protocol === "https:" ? "wss://" : "ws://") + loc.host + "/ws";
+      ws = new WebSocket(wsUri);
+
+      ws.onopen = () => {
+        logTerminal("Canal WebSocket conectado com o robô.", "emerald");
+      };
+
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        updateDashboard(data);
+      };
+
+      ws.onclose = () => {
+        logTerminal("Reconectando canal WebSocket...", "amber");
+        setTimeout(initWebSocket, 2000);
+      };
+    }
+
+    function updateDashboard(data) {
+      if (!data) return;
+
+      // Status e Botão
+      isBotRunning = data.is_running;
+      const dot = document.getElementById("bot-status-dot");
+      const text = document.getElementById("bot-status-text");
+      const btn = document.getElementById("btn-toggle");
+
+      if (data.is_running) {
+        dot.className = "w-2 h-2 rounded-full bg-emerald-400 animate-pulse";
+        text.innerText = "Ativo";
+        btn.className = "w-32 py-1.5 rounded-lg font-semibold text-xs flex items-center justify-center gap-2 transition shadow-lg bg-rose-600 hover:bg-rose-500 text-white";
+        btn.innerHTML = '<i data-lucide="square" class="w-4 h-4"></i><span>Pausar</span>';
+      } else {
+        dot.className = "w-2 h-2 rounded-full bg-slate-500";
+        text.innerText = "Parado";
+        btn.className = "w-32 py-1.5 rounded-lg font-semibold text-xs flex items-center justify-center gap-2 transition shadow-lg bg-emerald-600 hover:bg-emerald-500 text-white";
+        btn.innerHTML = '<i data-lucide="play" class="w-4 h-4"></i><span>Iniciar</span>';
+      }
+
+      // Saldo da Conta em Tempo Real (Direto da Deriv)
+      if (data.account_balance !== undefined) {
+        document.getElementById("account-balance").innerText = `$${parseFloat(data.account_balance).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`;
+      }
+      document.getElementById("account-id").innerText = data.account_id || "DOT...";
+
+      // PnL
+      const pnl = data.daily_pnl || 0.0;
+      const pnlEl = document.getElementById("pnl-value");
+      pnlEl.innerText = `${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`;
+      pnlEl.className = `text-3xl font-extrabold tracking-tight font-mono ${pnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}`;
+
+      // Metas
+      document.getElementById("tp-target").innerText = `+$${data.tp_target?.toFixed(2) || '2.00'}`;
+      document.getElementById("sl-target").innerText = `-$${data.sl_target?.toFixed(2) || '2.00'}`;
+
+      // Assertividade e Placar
+      const winRate = data.win_rate || 0.0;
+      document.getElementById("win-rate").innerText = `${winRate.toFixed(1)}%`;
+      document.getElementById("win-rate-bar").style.width = `${Math.min(winRate, 100)}%`;
+      document.getElementById("wins-count").innerText = `${data.wins || 0}W`;
+      document.getElementById("losses-count").innerText = `${data.losses || 0}L`;
+      document.getElementById("total-trades").innerText = `${data.total_trades || 0}`;
+
+      // Ativo Campeão
+      document.getElementById("active-asset-name").innerText = data.active_asset_name || "Volatility 10";
+      document.getElementById("active-asset-rate").innerText = `${data.active_asset_rate?.toFixed(1) || '95.0'}%`;
+      const lblSurvival = document.getElementById("lbl-survival-ticks");
+      if (lblSurvival) {
+        lblSurvival.innerText = `Sobrevivência ${data.exit_ticks || 6}T:`;
+      }
+
+      // Monitor de Trade Estático (Sem Layout Shift)
+      const indicator = document.getElementById("trade-indicator");
+      const label = document.getElementById("trade-label");
+      const assetInfo = document.getElementById("trade-asset-info");
+      const contractId = document.getElementById("live-contract-id");
+      const ticksDisplay = document.getElementById("live-ticks-display");
+      const profitDisplay = document.getElementById("live-profit-display");
+
+      if (data.in_trade) {
+        indicator.className = "w-10 h-10 rounded-xl bg-emerald-950 border border-emerald-500/40 flex items-center justify-center text-emerald-400";
+        indicator.innerHTML = '<i data-lucide="zap" class="w-5 h-5 animate-bounce"></i>';
+        label.innerText = "Operação em Andamento";
+        label.className = "text-xs font-semibold uppercase tracking-wider text-emerald-400";
+        contractId.innerText = `(#${data.current_contract_id})`;
+        assetInfo.innerText = `${data.active_asset_name} • Saída no ${data.exit_ticks || 6}º tick`;
+        ticksDisplay.innerText = `${data.current_ticks || 0} / ${data.exit_ticks || 6}`;
+        
+        const curProfit = data.current_profit || 0.0;
+        profitDisplay.innerText = `${curProfit >= 0 ? '+' : ''}$${curProfit.toFixed(2)}`;
+        profitDisplay.className = `text-lg font-extrabold font-mono ${curProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`;
+      } else {
+        indicator.className = "w-10 h-10 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-400";
+        indicator.innerHTML = '<i data-lucide="clock" class="w-5 h-5"></i>';
+        label.innerText = data.is_running ? "Monitorando Mercado" : "Robô Pausado";
+        label.className = "text-xs font-semibold uppercase tracking-wider text-slate-400";
+        contractId.innerText = "";
+        assetInfo.innerText = data.is_running ? `Aguardando próximo ciclo em ${data.active_asset_name}` : "Clique em Iniciar para começar";
+        ticksDisplay.innerText = `0 / ${data.exit_ticks || 6}`;
+        profitDisplay.innerText = "$0.00";
+        profitDisplay.className = "text-lg font-extrabold font-mono text-slate-500";
+      }
+
+      // Histórico de Trades
+      if (data.recent_trades && data.recent_trades.length > 0) {
+        const tbody = document.getElementById("trades-table-body");
+        tbody.innerHTML = data.recent_trades.map(t => `
+          <tr class="hover:bg-slate-800/40 transition">
+            <td class="py-2 text-slate-400">${t.time}</td>
+            <td class="py-2 text-slate-200 font-semibold">${t.symbol}</td>
+            <td class="py-2 text-slate-400">$${t.stake.toFixed(2)}</td>
+            <td class="py-2">
+              <span class="px-2 py-0.5 rounded text-[10px] font-bold ${t.profit > 0 ? 'bg-emerald-950 text-emerald-400 border border-emerald-500/30' : 'bg-rose-950 text-rose-400 border border-rose-500/30'}">
+                ${t.profit > 0 ? 'VITÓRIA' : 'DERROTA'}
+              </span>
+            </td>
+            <td class="py-2 text-right font-bold ${t.profit > 0 ? 'text-emerald-400' : 'text-rose-400'}">
+              ${t.profit > 0 ? '+' : ''}$${t.profit.toFixed(2)}
+            </td>
+          </tr>
+        `).join('');
+      }
+
+      if (data.latest_log) {
+        logTerminal(data.latest_log);
+      }
+
+      lucide.createIcons();
+    }
+
+    let lastLog = "";
+    function logTerminal(msg, color = "slate") {
+      if (msg === lastLog) return;
+      lastLog = msg;
+      const term = document.getElementById("terminal-logs");
+      const div = document.createElement("div");
+      const time = new Date().toLocaleTimeString();
+      div.className = `text-${color}-400 leading-relaxed`;
+      div.innerText = `[${time}] ${msg}`;
+      term.appendChild(div);
+      term.scrollTop = term.scrollHeight;
+    }
+
+    async function toggleBot() {
+      const endpoint = isBotRunning ? "/api/stop" : "/api/start";
+      try {
+        const res = await fetch(endpoint, { method: "POST" });
+        const d = await res.json();
+        logTerminal(d.message, isBotRunning ? "rose" : "emerald");
+      } catch (e) {
+        logTerminal("Erro ao comunicar com o servidor: " + e, "rose");
+      }
+    }
+
+    window.onload = () => {
+      lucide.createIcons();
+      initWebSocket();
+    };
+  </script>
+</body>
+</html>

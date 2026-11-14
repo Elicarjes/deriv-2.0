@@ -1,0 +1,29 @@
+# Arquivos de Ambiente e Segurança (CRÍTICO: NUNCA SUBIR TOKENS!)
+.env
+*.env.local
+
+# Python Virtual Environment
+.venv/
+env/
+venv/
+ENV/
+
+# Python Cache & Bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+
+# Logs e Dados Temporários
+*.log
+scratch/
+test_*.py
+
+# IDEs e Editores
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+.DS_Store
+Thumbs.db
