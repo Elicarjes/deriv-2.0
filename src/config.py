@@ -28,6 +28,10 @@ class BotConfig:
     daily_take_profit_usd: float = float(os.getenv("DAILY_TAKE_PROFIT_USD", "2.00"))  # Meta máxima de ganho no dia
     max_consecutive_losses: int = int(os.getenv("MAX_CONSECUTIVE_LOSSES", "2"))  # Pausa após 2 derrotas
 
+    # Sincronização Inteligente de Ciclo (Esperar bater na parede)
+    wait_cycle_reset: bool = os.getenv("WAIT_CYCLE_RESET", "true").lower() in ("true", "1", "yes")
+    max_entry_tick: int = int(os.getenv("MAX_ENTRY_TICK", "1"))
+
     # Endpoints Oficiais v2
     rest_base_url: str = "https://api.derivws.com"
     public_ws_url: str = "wss://api.derivws.com/trading/v1/options/ws/public"

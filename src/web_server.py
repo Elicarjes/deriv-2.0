@@ -60,6 +60,7 @@ class DashboardState:
         self.current_contract_id: Optional[int] = None
         self.current_ticks = 0
         self.current_profit = 0.0
+        self.current_cycle_tick = 0
 
         self.recent_trades: List[Dict[str, Any]] = []
         self.latest_log = "Sistema pronto. Subscrição de saldo ativa."
@@ -84,6 +85,9 @@ class DashboardState:
             "daily_stop_loss_usd": self.config.daily_stop_loss_usd,
             "daily_take_profit_usd": self.config.daily_take_profit_usd,
             "max_consecutive_losses": self.config.max_consecutive_losses,
+            "wait_cycle_reset": self.config.wait_cycle_reset,
+            "max_entry_tick": self.config.max_entry_tick,
+            "current_cycle_tick": self.current_cycle_tick,
             "daily_pnl": self.risk.daily_pnl,
             "tp_target": self.config.daily_take_profit_usd,
             "sl_target": self.config.daily_stop_loss_usd,
@@ -298,7 +302,7 @@ class BotRunner:
 
                     # 3. Loop de Trading 100% Event-Driven (Zero Polling de Portfolio)
                     while self.st.is_running and self.st.risk.can_trade():
-                        # A. Solicita Proposta
+                        # A. Solicita Proposta Streaming
                         prop_req = {
                             "proposal": 1, "subscribe": 1,
                             "amount": self.st.config.stake_amount,
@@ -319,6 +323,52 @@ class BotRunner:
 
                         prop_id = prop_resp.get("proposal", {}).get("id")
                         sub_id = prop_resp.get("subscription", {}).get("id")
+
+                        # Sincronização Inteligente de Ciclo (Esperar bater na parede)
+                        if self.st.config.wait_cycle_reset:
+                            prev_cycle_tick = None
+                            cycle_ready = False
+
+                            while not cycle_ready and self.st.is_running and self.st.risk.can_trade():
+                                p_data = prop_resp.get("proposal", {})
+                                p_details = p_data.get("contract_details", {})
+                                tsi = p_details.get("ticks_stayed_in")
+
+                                if tsi and len(tsi) == 1:
+                                    cur_tick = tsi[0]
+                                    self.st.current_cycle_tick = cur_tick
+
+                                    # Condição 1: Já está no início do ciclo (tick 0 ou <= max_entry_tick)
+                                    if cur_tick <= self.st.config.max_entry_tick:
+                                        cycle_ready = True
+                                        self.st.latest_log = f"⚡ Ciclo virgem detectado ({cur_tick}º tick)! Disparando entrada..."
+                                        logger.info(self.st.latest_log)
+                                        await self.st.notify_clients()
+                                        break
+
+                                    # Condição 2: Reset detectado (cur_tick resetou após bater na parede)
+                                    if prev_cycle_tick is not None and cur_tick < prev_cycle_tick:
+                                        cycle_ready = True
+                                        self.st.latest_log = f"💥 Parede atingida após {prev_cycle_tick} ticks! Novo ciclo iniciado ({cur_tick}T). Disparando compra..."
+                                        logger.info(self.st.latest_log)
+                                        await self.st.notify_clients()
+                                        break
+
+                                    prev_cycle_tick = cur_tick
+                                    self.st.latest_log = f"⏳ Aguardando ciclo resetar... (Ativo no {cur_tick}º tick sem bater na parede)"
+                                    await self.st.notify_clients()
+
+                                # Aguarda o próximo tick do stream de proposta
+                                prop_resp = await self.recv_next(ws, expected_msg_type="proposal")
+                                if not prop_resp or "error" in prop_resp:
+                                    break
+                                prop_id = prop_resp.get("proposal", {}).get("id", prop_id)
+                                sub_id = prop_resp.get("subscription", {}).get("id", sub_id)
+
+                            if not cycle_ready:
+                                if sub_id:
+                                    await ws.send(json.dumps({"forget": sub_id}))
+                                continue
 
                         if sub_id:
                             await ws.send(json.dumps({"forget": sub_id}))
@@ -509,6 +559,8 @@ class ConfigUpdateRequest(BaseModel):
     daily_stop_loss_usd: float
     daily_take_profit_usd: float
     max_consecutive_losses: int
+    wait_cycle_reset: bool = True
+    max_entry_tick: int = 1
 
 
 @app.get("/api/config")
@@ -519,7 +571,9 @@ async def get_config():
         "exit_ticks": state.config.exit_ticks,
         "daily_stop_loss_usd": state.config.daily_stop_loss_usd,
         "daily_take_profit_usd": state.config.daily_take_profit_usd,
-        "max_consecutive_losses": state.config.max_consecutive_losses
+        "max_consecutive_losses": state.config.max_consecutive_losses,
+        "wait_cycle_reset": state.config.wait_cycle_reset,
+        "max_entry_tick": state.config.max_entry_tick
     }
 
 
@@ -536,6 +590,8 @@ async def update_config(cfg_in: ConfigUpdateRequest):
     state.config.daily_stop_loss_usd = round(abs(float(cfg_in.daily_stop_loss_usd)), 2)
     state.config.daily_take_profit_usd = round(abs(float(cfg_in.daily_take_profit_usd)), 2)
     state.config.max_consecutive_losses = int(cfg_in.max_consecutive_losses)
+    state.config.wait_cycle_reset = bool(cfg_in.wait_cycle_reset)
+    state.config.max_entry_tick = int(cfg_in.max_entry_tick)
 
     # Reavalia o RiskManager se estava bloqueado por meta anterior
     if state.risk.is_stopped:
@@ -553,10 +609,12 @@ async def update_config(cfg_in: ConfigUpdateRequest):
         "EXIT_TICKS": str(state.config.exit_ticks),
         "DAILY_STOP_LOSS_USD": f"{state.config.daily_stop_loss_usd:.2f}",
         "DAILY_TAKE_PROFIT_USD": f"{state.config.daily_take_profit_usd:.2f}",
-        "MAX_CONSECUTIVE_LOSSES": str(state.config.max_consecutive_losses)
+        "MAX_CONSECUTIVE_LOSSES": str(state.config.max_consecutive_losses),
+        "WAIT_CYCLE_RESET": str(state.config.wait_cycle_reset).lower(),
+        "MAX_ENTRY_TICK": str(state.config.max_entry_tick)
     })
 
-    log_msg = f"⚙️ Configurações salvas: Stake ${state.config.stake_amount:.2f} | Growth {state.config.growth_rate*100:.0f}% | Saída {state.config.exit_ticks}T | TP ${state.config.daily_take_profit_usd:.2f} | SL ${state.config.daily_stop_loss_usd:.2f} | Max Loss {state.config.max_consecutive_losses}"
+    log_msg = f"⚙️ Configurações salvas: Stake ${state.config.stake_amount:.2f} | Growth {state.config.growth_rate*100:.0f}% | Saída {state.config.exit_ticks}T | Reset Parede: {'SIM' if state.config.wait_cycle_reset else 'NÃO'}"
     state.latest_log = log_msg
     logger.info(log_msg)
     await state.notify_clients()
@@ -570,7 +628,9 @@ async def update_config(cfg_in: ConfigUpdateRequest):
             "exit_ticks": state.config.exit_ticks,
             "daily_stop_loss_usd": state.config.daily_stop_loss_usd,
             "daily_take_profit_usd": state.config.daily_take_profit_usd,
-            "max_consecutive_losses": state.config.max_consecutive_losses
+            "max_consecutive_losses": state.config.max_consecutive_losses,
+            "wait_cycle_reset": state.config.wait_cycle_reset,
+            "max_entry_tick": state.config.max_entry_tick
         }
     }
 

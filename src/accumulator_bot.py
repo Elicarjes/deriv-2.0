@@ -185,7 +185,45 @@ class AccumulatorBot:
 
         proposal_id = prop_msg["proposal"]["id"]
         sub_id = prop_msg.get("subscription", {}).get("id")
-        spot = prop_msg["proposal"].get("spot")
+
+        # Sincronização Inteligente de Ciclo (Esperar bater na parede)
+        if self.config.wait_cycle_reset:
+            prev_cycle_tick = None
+            cycle_ready = False
+
+            while not cycle_ready and self.is_running and self.risk.can_trade():
+                p_data = prop_msg.get("proposal", {})
+                p_details = p_data.get("contract_details", {})
+                tsi = p_details.get("ticks_stayed_in")
+
+                if tsi and len(tsi) == 1:
+                    cur_tick = tsi[0]
+
+                    if cur_tick <= self.config.max_entry_tick:
+                        cycle_ready = True
+                        logger.info(f"⚡ Ciclo virgem detectado ({cur_tick}º tick)! Disparando entrada...")
+                        break
+
+                    if prev_cycle_tick is not None and cur_tick < prev_cycle_tick:
+                        cycle_ready = True
+                        logger.info(f"💥 Parede atingida após {prev_cycle_tick} ticks! Novo ciclo iniciado ({cur_tick}T). Disparando compra...")
+                        break
+
+                    prev_cycle_tick = cur_tick
+                    logger.info(f"⏳ Aguardando ciclo resetar... (Ativo no {cur_tick}º tick sem bater na parede)")
+
+                prop_msg = await self.recv_next(ws, expected_msg_type="proposal")
+                if not prop_msg or "error" in prop_msg:
+                    break
+                proposal_id = prop_msg.get("proposal", {}).get("id", proposal_id)
+                sub_id = prop_msg.get("subscription", {}).get("id", sub_id)
+
+            if not cycle_ready:
+                if sub_id:
+                    await ws.send(json.dumps({"forget": sub_id}))
+                return
+
+        spot = prop_msg.get("proposal", {}).get("spot")
         logger.info(f"Proposta aprovada (ID: {proposal_id[:8]}... | Spot: {spot})")
 
         if sub_id:
