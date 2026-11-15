@@ -19,7 +19,7 @@ class AccountClient:
         name: str,          # Ex: "Conta Primária (Real)"
         token: str,
         app_id: str,
-        account_id: str,
+        account_id: str = "",
         rest_base_url: str = "https://api.derivws.com"
     ):
         self.account_role = account_role
@@ -43,6 +43,25 @@ class AccountClient:
 
     def is_configured(self) -> bool:
         return bool(self.token and self.account_id)
+
+    def fetch_available_accounts(self) -> list:
+        """Busca todas as contas (Real e Demo) associadas a este token via REST API."""
+        if not self.token or not self.app_id:
+            return []
+        try:
+            headers = {
+                "Authorization": f"Bearer {self.token}",
+                "Deriv-App-ID": str(self.app_id),
+                "User-Agent": "Mozilla/5.0"
+            }
+            url = f"{self.rest_base_url}/trading/v1/options/accounts"
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=8.0) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                return data.get("data", [])
+        except Exception as e:
+            logger.warning(f"Erro ao listar contas disponíveis ({self.name}): {e}")
+            return []
 
     def fetch_balance(self) -> float:
         """Busca o saldo inicial da conta via REST API oficial."""

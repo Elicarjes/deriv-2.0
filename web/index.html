@@ -338,11 +338,11 @@
   </footer>
 
   <!-- Modal de Configurações -->
-  <div id="modal-config" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
-    <div class="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden transition-all transform duration-150">
+  <div id="modal-config" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4 hidden">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col transition-all transform duration-150">
       
-      <!-- Cabeçalho do Modal -->
-      <div class="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/60">
+      <!-- Cabeçalho do Modal (Fixo) -->
+      <div class="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between bg-slate-950/80 shrink-0">
         <div class="flex items-center gap-2.5">
           <div class="w-8 h-8 rounded-lg bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400">
             <i data-lucide="sliders" class="w-4 h-4"></i>
@@ -352,13 +352,16 @@
             <p class="text-[11px] text-slate-400">Ajuste e salve parâmetros em tempo real</p>
           </div>
         </div>
-        <button onclick="closeConfigModal()" class="text-slate-400 hover:text-slate-200 p-1.5 rounded-lg hover:bg-slate-800 transition">
+        <button type="button" onclick="closeConfigModal()" class="text-slate-400 hover:text-slate-200 p-1.5 rounded-lg hover:bg-slate-800 transition">
           <i data-lucide="x" class="w-5 h-5"></i>
         </button>
       </div>
 
       <!-- Formulário de Configurações -->
-      <form id="form-config" onsubmit="handleSaveConfig(event)" class="p-6 space-y-5">
+      <form id="form-config" onsubmit="handleSaveConfig(event)" class="flex flex-col flex-1 overflow-hidden">
+        
+        <!-- Miolo com Barra de Rolagem Interna -->
+        <div class="flex-1 overflow-y-auto p-5 space-y-4">
         
         <!-- Bloco 1: Estratégia do Acumulador (ACCU) -->
         <div class="space-y-3">
@@ -503,18 +506,28 @@
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
             <!-- Conta Primária (Real) -->
             <div class="bg-slate-950/70 border border-slate-800/80 rounded-xl p-3 space-y-2">
-              <span class="text-[11px] font-bold text-emerald-400 flex items-center gap-1">
-                <i data-lucide="wallet" class="w-3 h-3"></i>
-                Conta Primária (Real)
-              </span>
+              <div class="flex items-center justify-between">
+                <span class="text-[11px] font-bold text-emerald-400 flex items-center gap-1">
+                  <i data-lucide="wallet" class="w-3 h-3"></i>
+                  Conta Primária (Real)
+                </span>
+                <button type="button" onclick="detectAccounts('prim')" class="text-[9px] text-cyan-400 hover:text-cyan-300 flex items-center gap-1 font-normal underline">
+                  <i data-lucide="refresh-cw" class="w-2.5 h-2.5"></i> Buscar Contas
+                </button>
+              </div>
               <div>
                 <label class="block text-[10px] text-slate-500 mb-0.5">Token PAT Primário</label>
                 <input type="password" id="cfg-prim-token" placeholder="pat_..." class="w-full bg-slate-900 border border-slate-800 rounded px-2 py-1 text-xs font-mono text-slate-200 focus:outline-none focus:border-emerald-500" />
               </div>
               <div class="grid grid-cols-2 gap-2">
                 <div>
-                  <label class="block text-[10px] text-slate-500 mb-0.5">Account ID (Ex: ROT...)</label>
-                  <input type="text" id="cfg-prim-acc-id" placeholder="ROT..." class="w-full bg-slate-900 border border-slate-800 rounded px-2 py-1 text-xs font-mono text-slate-200 focus:outline-none focus:border-emerald-500" />
+                  <label class="block text-[10px] text-slate-500 mb-0.5">Conta Deriv</label>
+                  <select id="cfg-prim-acc-select" onchange="handleAccSelectChange('prim')" class="w-full bg-slate-900 border border-slate-800 rounded px-2 py-1 text-xs font-mono font-semibold text-emerald-300 focus:outline-none focus:border-emerald-500 cursor-pointer">
+                    <option value="ROT92107168">ROT92107168 (REAL)</option>
+                    <option value="DOT93505571">DOT93505571 (DEMO)</option>
+                    <option value="custom">✏️ Outra...</option>
+                  </select>
+                  <input type="text" id="cfg-prim-acc-id" placeholder="ROT..." class="w-full mt-1 bg-slate-900 border border-slate-800 rounded px-2 py-1 text-xs font-mono text-slate-200 focus:outline-none focus:border-emerald-500 hidden" />
                 </div>
                 <div>
                   <label class="block text-[10px] text-slate-500 mb-0.5">App ID</label>
@@ -525,18 +538,28 @@
 
             <!-- Conta Secundária (Escudo Demo) -->
             <div class="bg-slate-950/70 border border-slate-800/80 rounded-xl p-3 space-y-2">
-              <span class="text-[11px] font-bold text-amber-400 flex items-center gap-1">
-                <i data-lucide="shield-check" class="w-3 h-3"></i>
-                Conta Secundária (Escudo Demo)
-              </span>
+              <div class="flex items-center justify-between">
+                <span class="text-[11px] font-bold text-amber-400 flex items-center gap-1">
+                  <i data-lucide="shield-check" class="w-3 h-3"></i>
+                  Conta Secundária (Escudo Demo)
+                </span>
+                <button type="button" onclick="detectAccounts('sec')" class="text-[9px] text-amber-400 hover:text-amber-300 flex items-center gap-1 font-normal underline">
+                  <i data-lucide="refresh-cw" class="w-2.5 h-2.5"></i> Buscar Contas
+                </button>
+              </div>
               <div>
                 <label class="block text-[10px] text-slate-500 mb-0.5">Token PAT Secundário</label>
                 <input type="password" id="cfg-sec-token" placeholder="pat_..." class="w-full bg-slate-900 border border-slate-800 rounded px-2 py-1 text-xs font-mono text-slate-200 focus:outline-none focus:border-amber-500" />
               </div>
               <div class="grid grid-cols-2 gap-2">
                 <div>
-                  <label class="block text-[10px] text-slate-500 mb-0.5">Account ID (Ex: DOT...)</label>
-                  <input type="text" id="cfg-sec-acc-id" placeholder="DOT..." class="w-full bg-slate-900 border border-slate-800 rounded px-2 py-1 text-xs font-mono text-slate-200 focus:outline-none focus:border-amber-500" />
+                  <label class="block text-[10px] text-slate-500 mb-0.5">Conta Deriv</label>
+                  <select id="cfg-sec-acc-select" onchange="handleAccSelectChange('sec')" class="w-full bg-slate-900 border border-slate-800 rounded px-2 py-1 text-xs font-mono font-semibold text-amber-300 focus:outline-none focus:border-amber-500 cursor-pointer">
+                    <option value="DOT93505571">DOT93505571 (DEMO)</option>
+                    <option value="ROT92107168">ROT92107168 (REAL)</option>
+                    <option value="custom">✏️ Outra...</option>
+                  </select>
+                  <input type="text" id="cfg-sec-acc-id" placeholder="DOT..." class="w-full mt-1 bg-slate-900 border border-slate-800 rounded px-2 py-1 text-xs font-mono text-slate-200 focus:outline-none focus:border-amber-500 hidden" />
                 </div>
                 <div>
                   <label class="block text-[10px] text-slate-500 mb-0.5">App ID</label>
@@ -551,9 +574,6 @@
           </p>
         </div>
 
-        <!-- Mensagem de Feedback -->
-        <div id="cfg-feedback-msg" class="text-xs font-medium text-center hidden py-1"></div>
-
         <!-- Opção de Iniciar Nova Sessão ao Salvar -->
         <div class="bg-slate-950/60 border border-slate-800/80 rounded-lg p-3">
           <label class="flex items-center gap-2.5 cursor-pointer text-xs text-slate-300 hover:text-white select-none">
@@ -562,8 +582,12 @@
           </label>
         </div>
 
-        <!-- Ações do Modal -->
-        <div class="pt-2 flex items-center justify-end gap-3">
+      </div>
+
+      <!-- Rodapé Fixo com Botões e Mensagem de Feedback (Sempre Visíveis) -->
+      <div class="px-5 py-3.5 border-t border-slate-800 bg-slate-950/80 shrink-0 flex items-center justify-between gap-3">
+        <div id="cfg-feedback-msg" class="text-xs font-medium hidden"></div>
+        <div class="flex items-center gap-3 ml-auto">
           <button type="button" onclick="closeConfigModal()" class="px-4 py-2 rounded-lg text-xs font-semibold text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition">
             Cancelar
           </button>
@@ -572,10 +596,11 @@
             <span>Salvar Configurações</span>
           </button>
         </div>
+      </div>
 
-      </form>
-    </div>
+    </form>
   </div>
+</div>
 
   <!-- Modal de Histórico de Sessões -->
   <div id="modal-sessions" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm hidden p-4">
@@ -951,6 +976,88 @@
       }
     }
 
+    // Gerenciamento e Seleção de Contas Deriv (Real / Virtual)
+    function handleAccSelectChange(type) {
+      const select = document.getElementById(`cfg-${type}-acc-select`);
+      const input = document.getElementById(`cfg-${type}-acc-id`);
+      if (!select || !input) return;
+      if (select.value === "custom") {
+        input.classList.remove("hidden");
+        input.focus();
+      } else {
+        input.classList.add("hidden");
+        input.value = select.value;
+      }
+    }
+
+    function renderAccountOptions(type, accounts, selectedVal) {
+      const select = document.getElementById(`cfg-${type}-acc-select`);
+      const input = document.getElementById(`cfg-${type}-acc-id`);
+      if (!select) return;
+      select.innerHTML = "";
+      let matched = false;
+
+      (accounts || []).forEach(acc => {
+        const aid = acc.account_id;
+        const isReal = (acc.account_type || "").toLowerCase() === "real" || aid.startsWith("R") || aid.startsWith("CR");
+        const labelType = isReal ? "REAL" : "VIRTUAL / DEMO";
+        const bal = acc.balance !== undefined ? ` • $${parseFloat(acc.balance).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "";
+        const opt = document.createElement("option");
+        opt.value = aid;
+        opt.text = `${aid} (${labelType}${bal})`;
+        if (aid === selectedVal || (!selectedVal && (type === 'prim' ? isReal : !isReal))) {
+          opt.selected = true;
+          matched = true;
+          if (input) input.value = aid;
+        }
+        select.appendChild(opt);
+      });
+
+      const customOpt = document.createElement("option");
+      customOpt.value = "custom";
+      customOpt.text = "✏️ Outra conta (digitar)...";
+      if (!matched && selectedVal) {
+        customOpt.selected = true;
+        if (input) {
+          input.classList.remove("hidden");
+          input.value = selectedVal;
+        }
+      }
+      select.appendChild(customOpt);
+
+      if (select.value !== "custom" && input) {
+        input.classList.add("hidden");
+        input.value = select.value;
+      }
+    }
+
+    async function detectAccounts(type) {
+      const token = document.getElementById(`cfg-${type}-token`).value.trim();
+      const appId = document.getElementById(`cfg-${type}-app-id`).value.trim();
+      if (!token || !appId) {
+        showFeedback("Preencha o Token PAT e o App ID para detectar as contas na Deriv.", true);
+        return;
+      }
+      showFeedback(`Buscando contas na Deriv para ${type === 'prim' ? 'Conta Primária' : 'Conta Secundária'}...`);
+      try {
+        const res = await fetch("/api/accounts/list", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token, app_id: appId })
+        });
+        const data = await res.json();
+        if (res.ok && data.accounts && data.accounts.length > 0) {
+          const curVal = document.getElementById(`cfg-${type}-acc-id`).value;
+          renderAccountOptions(type, data.accounts, curVal);
+          showFeedback("Contas da Deriv detectadas com sucesso!");
+        } else {
+          showFeedback(data.message || "Nenhuma conta retornada pela Deriv.", true);
+        }
+      } catch (err) {
+        showFeedback("Erro na comunicação com a API Deriv: " + err, true);
+      }
+    }
+
     // Modal de Configurações
     async function openConfigModal() {
       const modal = document.getElementById("modal-config");
@@ -986,21 +1093,32 @@
         if (currentConfig.primary_token !== undefined) {
           document.getElementById("cfg-prim-token").value = currentConfig.primary_token;
         }
-        if (currentConfig.primary_account_id !== undefined) {
-          document.getElementById("cfg-prim-acc-id").value = currentConfig.primary_account_id;
-        }
         if (currentConfig.primary_app_id !== undefined) {
           document.getElementById("cfg-prim-app-id").value = currentConfig.primary_app_id;
         }
         if (currentConfig.secondary_token !== undefined) {
           document.getElementById("cfg-sec-token").value = currentConfig.secondary_token;
         }
-        if (currentConfig.secondary_account_id !== undefined) {
-          document.getElementById("cfg-sec-acc-id").value = currentConfig.secondary_account_id;
-        }
         if (currentConfig.secondary_app_id !== undefined) {
           document.getElementById("cfg-sec-app-id").value = currentConfig.secondary_app_id;
         }
+
+        // Renderização dos Selects de Contas Deriv
+        const primAccs = (currentConfig.primary_available_accounts && currentConfig.primary_available_accounts.length > 0)
+          ? currentConfig.primary_available_accounts
+          : [
+              { account_id: "ROT92107168", account_type: "real" },
+              { account_id: "DOT93505571", account_type: "demo" }
+            ];
+        renderAccountOptions("prim", primAccs, currentConfig.primary_account_id || "ROT92107168");
+
+        const secAccs = (currentConfig.secondary_available_accounts && currentConfig.secondary_available_accounts.length > 0)
+          ? currentConfig.secondary_available_accounts
+          : [
+              { account_id: "DOT93505571", account_type: "demo" },
+              { account_id: "ROT92107168", account_type: "real" }
+            ];
+        renderAccountOptions("sec", secAccs, currentConfig.secondary_account_id || "DOT93505571");
       }
       
       const totalTrades = parseInt(document.getElementById("total-trades").innerText) || 0;
@@ -1063,6 +1181,14 @@
       const btn = document.getElementById("btn-save-cfg");
       const origHtml = btn.innerHTML;
 
+      const primSelect = document.getElementById("cfg-prim-acc-select");
+      const primInput = document.getElementById("cfg-prim-acc-id");
+      const primaryAccId = (primSelect && primSelect.value !== "custom") ? primSelect.value : (primInput ? primInput.value.trim() : "");
+
+      const secSelect = document.getElementById("cfg-sec-acc-select");
+      const secInput = document.getElementById("cfg-sec-acc-id");
+      const secondaryAccId = (secSelect && secSelect.value !== "custom") ? secSelect.value : (secInput ? secInput.value.trim() : "");
+
       const payload = {
         growth_rate: parseFloat(document.getElementById("cfg-growth-rate").value),
         stake_amount: parseFloat(document.getElementById("cfg-stake-amount").value),
@@ -1075,10 +1201,10 @@
         operation_mode: document.getElementById("cfg-operation-mode").value,
         shield_trigger_losses: parseInt(document.getElementById("cfg-shield-trigger").value) || 3,
         primary_token: document.getElementById("cfg-prim-token").value.trim(),
-        primary_account_id: document.getElementById("cfg-prim-acc-id").value.trim(),
+        primary_account_id: primaryAccId,
         primary_app_id: document.getElementById("cfg-prim-app-id").value.trim(),
         secondary_token: document.getElementById("cfg-sec-token").value.trim(),
-        secondary_account_id: document.getElementById("cfg-sec-acc-id").value.trim(),
+        secondary_account_id: secondaryAccId,
         secondary_app_id: document.getElementById("cfg-sec-app-id").value.trim(),
         start_new_session: document.getElementById("cfg-start-new-session")?.checked || false
       };

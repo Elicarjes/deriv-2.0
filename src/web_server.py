@@ -70,11 +70,12 @@ class DashboardState:
         self.sniper_armed = False
         self.active_trade_account = "primary" if self.operation_mode == "primary_only" else "secondary"
 
+        active_acc = self.primary_account if self.active_trade_account == "primary" else self.secondary_account
         self.is_running = False
         self.status_message = "Parado"
-        self.account_id = self.get_active_account().account_id or "DOT..."
-        self.account_balance = self.get_active_account().balance
-        self.account_type = self.get_active_account().account_type
+        self.account_id = active_acc.account_id or "DOT..."
+        self.account_balance = active_acc.balance
+        self.account_type = active_acc.account_type
         self.rate_limit_status = "OK • Teto 360 req/min"
         self.is_rate_limited = False
         self.account_limits = {
@@ -83,12 +84,6 @@ class DashboardState:
             "max_concurrent_contracts": 1,
             "architecture": "Event-Driven Push (Zero Polling)"
         }
-
-    def get_active_account(self) -> AccountClient:
-        """Retorna o cliente de conta atualmente em uso para trade."""
-        if self.active_trade_account == "primary":
-            return self.primary_account
-        return self.secondary_account
 
         self.active_symbol = config.symbol
         self.active_asset_name = "Volatility 10"
@@ -107,6 +102,12 @@ class DashboardState:
 
         # Gerenciamento de conexões WebSocket do frontend (Event-Driven)
         self.connected_websockets: Set[WebSocket] = set()
+
+    def get_active_account(self) -> AccountClient:
+        """Retorna o cliente de conta atualmente em uso para trade."""
+        if self.active_trade_account == "primary":
+            return self.primary_account
+        return self.secondary_account
 
     def archive_current_session(self) -> Optional[Dict[str, Any]]:
         """Arquiva a sessão corrente caso tenha executado ao menos 1 trade."""
@@ -745,6 +746,8 @@ class ConfigUpdateRequest(BaseModel):
 
 @app.get("/api/config")
 async def get_config():
+    prim_accs = await asyncio.to_thread(state.primary_account.fetch_available_accounts)
+    sec_accs = await asyncio.to_thread(state.secondary_account.fetch_available_accounts)
     return {
         "growth_rate": state.config.growth_rate,
         "stake_amount": state.config.stake_amount,
@@ -759,10 +762,29 @@ async def get_config():
         "primary_token": state.primary_account.token,
         "primary_app_id": state.primary_account.app_id,
         "primary_account_id": state.primary_account.account_id,
+        "primary_available_accounts": prim_accs,
         "secondary_token": state.secondary_account.token,
         "secondary_app_id": state.secondary_account.app_id,
-        "secondary_account_id": state.secondary_account.account_id
+        "secondary_account_id": state.secondary_account.account_id,
+        "secondary_available_accounts": sec_accs
     }
+
+
+class AccountsListRequest(BaseModel):
+    token: str
+    app_id: str
+
+
+@app.post("/api/accounts/list")
+async def list_accounts(req: AccountsListRequest):
+    token = req.token.strip()
+    app_id = req.app_id.strip()
+    if not token or not app_id:
+        return JSONResponse(status_code=400, content={"status": "error", "message": "Token e App ID são obrigatórios."})
+    
+    client = AccountClient(account_role="temp", name="Temp", token=token, app_id=app_id)
+    accounts = await asyncio.to_thread(client.fetch_available_accounts)
+    return {"status": "success", "accounts": accounts}
 
 
 @app.post("/api/config")
