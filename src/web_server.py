@@ -579,10 +579,10 @@ async def get_config():
 
 @app.post("/api/config")
 async def update_config(cfg_in: ConfigUpdateRequest):
-    if cfg_in.stake_amount <= 0:
-        return JSONResponse(status_code=400, content={"status": "error", "message": "O valor da Stake deve ser maior que zero."})
-    if cfg_in.exit_ticks < 1:
-        return JSONResponse(status_code=400, content={"status": "error", "message": "Exit Ticks deve ser pelo menos 1."})
+    if cfg_in.stake_amount < 1.0:
+        return JSONResponse(status_code=400, content={"status": "error", "message": "A Stake mínima exigida pela Deriv para Accumulators é $1.00 USD."})
+    if cfg_in.exit_ticks < 2:
+        return JSONResponse(status_code=400, content={"status": "error", "message": "A saída deve ser no mínimo de 2 ticks (o 1º tick é o Entry Spot, que não gera lucro)."})
 
     state.config.growth_rate = round(float(cfg_in.growth_rate), 4)
     state.config.stake_amount = round(float(cfg_in.stake_amount), 2)
