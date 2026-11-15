@@ -24,6 +24,13 @@ class BotConfig:
     operation_mode: str = os.getenv("OPERATION_MODE", "secondary_only")
     shield_trigger_losses: int = int(os.getenv("SHIELD_TRIGGER_LOSSES", "2"))  # X derrotas na demo para armar a Real
 
+    # Ação pós-loss na Conta Primária (Modo Escudo):
+    # - "return_to_shield"     : Tiro Único Conservador (Volta imediatamente ao Escudo Demo)
+    # - "recovery_martingale"  : Tentativa de Recuperação / Martingale na Primária antes de voltar ao Escudo
+    primary_loss_action: str = os.getenv("PRIMARY_LOSS_ACTION", "return_to_shield")
+    primary_recovery_max_steps: int = int(os.getenv("PRIMARY_RECOVERY_MAX_STEPS", "1"))
+    primary_martingale_multiplier: float = float(os.getenv("PRIMARY_MARTINGALE_MULTIPLIER", "2.0"))
+
     # Configurações do Ativo e Contrato
     symbol: str = os.getenv("SYMBOL", "R_10")
     auto_select_best_asset: bool = os.getenv("AUTO_SELECT_BEST_ASSET", "true").lower() in ("true", "1", "yes")

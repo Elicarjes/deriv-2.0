@@ -73,6 +73,12 @@ class DashboardState:
         self.shield_losses = 0
         self.shield_pnl = 0.0
 
+        # Recuperação / Martingale na Primária pós-loss
+        self.primary_loss_action = config.primary_loss_action
+        self.primary_recovery_max_steps = config.primary_recovery_max_steps
+        self.primary_martingale_multiplier = config.primary_martingale_multiplier
+        self.primary_gale_step = 0
+
         active_acc = self.primary_account if self.active_trade_account == "primary" else self.secondary_account
         self.is_running = False
         self.status_message = "Parado"
@@ -111,6 +117,14 @@ class DashboardState:
         if self.active_trade_account == "primary":
             return self.primary_account
         return self.secondary_account
+
+    def get_current_stake(self, account: AccountClient) -> float:
+        """Calcula o valor da stake, aplicando Martingale na Primária se estiver em recuperação."""
+        if account.account_role == "primary" and self.primary_gale_step > 0:
+            mult = self.primary_martingale_multiplier ** self.primary_gale_step
+            calc_stake = round(self.config.stake_amount * mult, 2)
+            return max(1.0, calc_stake)
+        return self.config.stake_amount
 
     def archive_current_session(self) -> Optional[Dict[str, Any]]:
         """Arquiva a sessão corrente caso tenha executado ao menos 1 trade."""
@@ -168,6 +182,7 @@ class DashboardState:
         self.shield_pnl = 0.0
         self.shield_losses_count = 0
         self.sniper_armed = False
+        self.primary_gale_step = 0
         self.session_start_time = datetime.now()
         self.session_number = self.session_manager.get_next_session_number()
         self.session_id = f"sess_{int(datetime.now().timestamp())}"
@@ -223,6 +238,10 @@ class DashboardState:
             "shield_trigger_losses": self.shield_trigger_losses,
             "shield_losses_count": self.shield_losses_count,
             "sniper_armed": self.sniper_armed,
+            "primary_loss_action": self.primary_loss_action,
+            "primary_recovery_max_steps": self.primary_recovery_max_steps,
+            "primary_martingale_multiplier": self.primary_martingale_multiplier,
+            "primary_gale_step": self.primary_gale_step,
             "shield_pnl": round(self.shield_pnl, 2),
             "shield_wins": self.shield_wins,
             "shield_losses": self.shield_losses,
@@ -394,15 +413,35 @@ class BotRunner:
                 self.st.latest_log = f"🛡️ Vitória no Escudo Demo (+${profit:.2f})! Contador de perdas resetado (0/{self.st.shield_trigger_losses})."
         else:
             # Trade encerrado na Conta Primária (Real)
-            self.st.sniper_armed = False
-            self.st.shield_losses_count = 0
             if profit > 0:
-                self.st.latest_log = f"💰 SNIPER REAL CONCLUÍDO COM VITÓRIA (+${profit:.2f})! Retornando ao Escudo Demo."
+                self.st.primary_gale_step = 0
+                self.st.sniper_armed = False
+                self.st.shield_losses_count = 0
+                self.st.latest_log = f"💰 SNIPER CONCLUÍDO COM VITÓRIA (+${profit:.2f})! Retornando ao Escudo Demo."
                 logger.info(self.st.latest_log)
+                return True
             else:
-                self.st.latest_log = f"⚠️ Trade Real finalizado (${profit:.2f}). Retornando ao Escudo Demo para nova sondagem."
-                logger.warning(self.st.latest_log)
-            return True
+                # Ocorreu derrota na Conta Primária
+                # Verifica se a regra configurada é Recuperação com Martingale na própria Primária
+                if (self.st.primary_loss_action == "recovery_martingale" and 
+                    self.st.primary_gale_step < self.st.primary_recovery_max_steps and 
+                    self.st.risk.can_trade()):
+                    self.st.primary_gale_step += 1
+                    next_stake = self.st.get_current_stake(account)
+                    self.st.latest_log = f"🔁 LOSS NA PRIMÁRIA! Ativando Recuperação Martingale [Tentativa {self.st.primary_gale_step}/{self.st.primary_recovery_max_steps}] com Stake ${next_stake:.2f}."
+                    logger.warning(self.st.latest_log)
+                    # Retorna False: NÃO troca de conexão! Permanece na Conta Primária para tentar recuperar!
+                    return False
+                else:
+                    if self.st.primary_gale_step > 0:
+                        self.st.latest_log = f"🛑 Limite de {self.st.primary_recovery_max_steps} tentativa(s) de recuperação atingido na Primária. Retornando ao Escudo Demo."
+                    else:
+                        self.st.latest_log = f"⚠️ Trade na Primária finalizado (${profit:.2f}). Retornando ao Escudo Demo para nova sondagem."
+                    logger.warning(self.st.latest_log)
+                    self.st.primary_gale_step = 0
+                    self.st.sniper_armed = False
+                    self.st.shield_losses_count = 0
+                    return True
 
         return False
 
@@ -460,9 +499,10 @@ class BotRunner:
                     # 3. Executa ordens enquanto estiver nesta conta
                     while self.st.is_running and self.st.risk.can_trade():
                         # A. Solicita Proposta Streaming
+                        current_stake = self.st.get_current_stake(target_account)
                         prop_req = {
                             "proposal": 1, "subscribe": 1,
-                            "amount": self.st.config.stake_amount,
+                            "amount": current_stake,
                             "basis": "stake", "contract_type": "ACCU",
                             "currency": "USD", "underlying_symbol": self.st.active_symbol,
                             "growth_rate": self.st.config.growth_rate,
@@ -531,7 +571,7 @@ class BotRunner:
                             await ws.send(json.dumps({"forget": sub_id}))
 
                         # B. Executa Compra do Contrato
-                        await ws.send(json.dumps({"buy": prop_id, "price": self.st.config.stake_amount, "req_id": 20}))
+                        await ws.send(json.dumps({"buy": prop_id, "price": current_stake, "req_id": 20}))
                         buy_resp = await self.recv_next(ws, expected_msg_type="buy", req_id=20, account=target_account)
                         
                         if not buy_resp or "error" in buy_resp:
@@ -546,7 +586,7 @@ class BotRunner:
                         self.st.in_trade = True
                         self.st.current_ticks = 0
                         self.st.current_profit = 0.0
-                        self.st.latest_log = f"Ordem aberta ({target_account.account_type}): #{cid} ({self.st.active_asset_name})"
+                        self.st.latest_log = f"Ordem aberta ({target_account.account_type}): #{cid} ({self.st.active_asset_name}) [Stake ${current_stake:.2f}]"
                         await self.st.notify_clients()
 
                         # C. Monitoramento em Tempo Real via Stream Push (proposal_open_contract)
@@ -593,7 +633,8 @@ class BotRunner:
                                     ticks=self.st.current_ticks,
                                     contract_id=cid,
                                     account_role=target_account.account_role,
-                                    account_type=target_account.account_type
+                                    account_type=target_account.account_type,
+                                    stake=current_stake
                                 )
                                 trade_done = True
                                 account_switched = self._handle_shield_post_trade(target_account, p_final)
@@ -608,7 +649,7 @@ class BotRunner:
                                 sell_resp = await self.recv_next(ws, expected_msg_type="sell", req_id=40, account=target_account)
                                 if sell_resp and "sell" in sell_resp:
                                     sold_for = float(sell_resp["sell"]["sold_for"])
-                                    net = sold_for - self.st.config.stake_amount
+                                    net = sold_for - current_stake
                                     is_shield_trade = (self.st.operation_mode == "shield_combined" and target_account.account_role == "secondary")
                                     if is_shield_trade:
                                         self.st.shield_pnl += net
@@ -624,9 +665,10 @@ class BotRunner:
                                         ticks=self.st.current_ticks,
                                         contract_id=cid,
                                         account_role=target_account.account_role,
-                                        account_type=target_account.account_type
+                                        account_type=target_account.account_type,
+                                        stake=current_stake
                                     )
-                                    self.st.latest_log = f"CASH OUT CONFIRMADO: +${net:.2f} no {self.st.current_ticks}º tick ({target_account.name})"
+                                    self.st.latest_log = f"CASH OUT CONFIRMADO: +${net:.2f} no {self.st.current_ticks}º tick ({target_account.name}) [Stake ${current_stake:.2f}]"
                                     trade_done = True
                                     account_switched = self._handle_shield_post_trade(target_account, net)
                                     break
@@ -673,12 +715,12 @@ class BotRunner:
             self.st.status_message = "Parado"
         await self.st.notify_clients()
 
-    def _record_trade(self, profit: float, ticks: int = 0, contract_id: Optional[int] = None, account_role: str = "secondary", account_type: str = "Demo"):
+    def _record_trade(self, profit: float, ticks: int = 0, contract_id: Optional[int] = None, account_role: str = "secondary", account_type: str = "Demo", stake: Optional[float] = None):
         now = datetime.now().strftime("%H:%M:%S")
         trade_item = {
             "time": now,
             "symbol": self.st.active_asset_name,
-            "stake": self.st.config.stake_amount,
+            "stake": stake or self.st.config.stake_amount,
             "profit": round(profit, 2),
             "result": "VITÓRIA" if profit > 0 else "DERROTA",
             "ticks": ticks or self.st.current_ticks,
@@ -770,6 +812,9 @@ class ConfigUpdateRequest(BaseModel):
     # Parâmetros da Conta Escudo e Multi-Contas
     operation_mode: Optional[str] = "secondary_only"
     shield_trigger_losses: Optional[int] = 2
+    primary_loss_action: Optional[str] = "return_to_shield"
+    primary_recovery_max_steps: Optional[int] = 1
+    primary_martingale_multiplier: Optional[float] = 2.0
     primary_token: Optional[str] = None
     primary_app_id: Optional[str] = None
     primary_account_id: Optional[str] = None
@@ -793,6 +838,9 @@ async def get_config():
         "max_entry_tick": state.config.max_entry_tick,
         "operation_mode": state.operation_mode,
         "shield_trigger_losses": state.shield_trigger_losses,
+        "primary_loss_action": state.primary_loss_action,
+        "primary_recovery_max_steps": state.primary_recovery_max_steps,
+        "primary_martingale_multiplier": state.primary_martingale_multiplier,
         "primary_token": state.primary_account.token,
         "primary_app_id": state.primary_account.app_id,
         "primary_account_id": state.primary_account.account_id,
@@ -845,6 +893,16 @@ async def update_config(cfg_in: ConfigUpdateRequest):
         state.shield_trigger_losses = max(1, int(cfg_in.shield_trigger_losses))
         state.config.shield_trigger_losses = state.shield_trigger_losses
 
+    if cfg_in.primary_loss_action:
+        state.primary_loss_action = cfg_in.primary_loss_action
+        state.config.primary_loss_action = cfg_in.primary_loss_action
+    if cfg_in.primary_recovery_max_steps is not None:
+        state.primary_recovery_max_steps = max(1, int(cfg_in.primary_recovery_max_steps))
+        state.config.primary_recovery_max_steps = state.primary_recovery_max_steps
+    if cfg_in.primary_martingale_multiplier is not None:
+        state.primary_martingale_multiplier = max(1.0, float(cfg_in.primary_martingale_multiplier))
+        state.config.primary_martingale_multiplier = state.primary_martingale_multiplier
+
     if cfg_in.primary_token:
         state.primary_account.token = cfg_in.primary_token.strip()
         state.config.token = state.primary_account.token
@@ -893,6 +951,9 @@ async def update_config(cfg_in: ConfigUpdateRequest):
         "MAX_ENTRY_TICK": str(state.config.max_entry_tick),
         "OPERATION_MODE": state.operation_mode,
         "SHIELD_TRIGGER_LOSSES": str(state.shield_trigger_losses),
+        "PRIMARY_LOSS_ACTION": state.primary_loss_action,
+        "PRIMARY_RECOVERY_MAX_STEPS": str(state.primary_recovery_max_steps),
+        "PRIMARY_MARTINGALE_MULTIPLIER": f"{state.primary_martingale_multiplier:.2f}",
         "DERIV_PRIMARY_API_TOKEN": state.primary_account.token,
         "DERIV_PRIMARY_APP_ID": state.primary_account.app_id,
         "DERIV_PRIMARY_ACCOUNT_ID": state.primary_account.account_id,
