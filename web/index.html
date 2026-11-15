@@ -9,6 +9,23 @@
   <!-- Lucide Icons -->
   <script src="https://unpkg.com/lucide@latest"></script>
   <style>
+    /* Estilização moderna e visível de barra de rolagem */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #090d16;
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #475569;
+    }
+
     .terminal-scrollbar::-webkit-scrollbar {
       width: 5px;
     }
@@ -359,7 +376,7 @@
 
   <!-- Modal de Configurações -->
   <div id="modal-config" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4 hidden">
-    <div class="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col transition-all transform duration-150">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-xl shadow-2xl overflow-hidden max-h-[85vh] flex flex-col transition-all transform duration-150">
       
       <!-- Cabeçalho do Modal (Fixo) -->
       <div class="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between bg-slate-950/80 shrink-0">
@@ -378,10 +395,10 @@
       </div>
 
       <!-- Formulário de Configurações -->
-      <form id="form-config" onsubmit="handleSaveConfig(event)" class="flex flex-col flex-1 overflow-hidden">
+      <form id="form-config" onsubmit="handleSaveConfig(event)" class="flex flex-col flex-1 overflow-hidden min-h-0">
         
-        <!-- Miolo com Barra de Rolagem Interna -->
-        <div class="flex-1 overflow-y-auto p-5 space-y-4">
+        <!-- Miolo com Barra de Rolagem Interna Visível -->
+        <div class="flex-1 overflow-y-auto p-5 space-y-4 min-h-0 pr-3">
         
         <!-- Bloco 1: Estratégia do Acumulador (ACCU) -->
         <div class="space-y-3">
@@ -1142,7 +1159,13 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ token, app_id: appId })
         });
-        const data = await res.json();
+        const text = await res.text();
+        let data;
+        try {
+          data = JSON.parse(text);
+        } catch (e) {
+          data = { status: "error", message: text || "Erro desconhecido na resposta da API" };
+        }
         if (res.ok && data.accounts && data.accounts.length > 0) {
           const curVal = document.getElementById(`cfg-${type}-acc-id`).value;
           renderAccountOptions(type, data.accounts, curVal);
@@ -1339,7 +1362,14 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload)
         });
-        const data = await res.json();
+        const text = await res.text();
+        let data;
+        try {
+          data = JSON.parse(text);
+        } catch (e) {
+          data = { status: "error", message: text || "Erro inesperado na resposta do servidor." };
+        }
+
         if (res.ok && data.status === "success") {
           currentConfig = data.config;
           showFeedback("Configurações salvas e aplicadas com sucesso!");
@@ -1548,7 +1578,13 @@
       if (confirm("Deseja finalizar a sessão atual e iniciar uma Nova Sessão limpa?\n\nO teste atual será arquivado no Histórico de Sessões com todas as estatísticas, configurações e contratos para consulta posterior.")) {
         try {
           const res = await fetch("/api/session/new", { method: "POST" });
-          const data = await res.json();
+          const text = await res.text();
+          let data;
+          try {
+            data = JSON.parse(text);
+          } catch (e) {
+            data = { status: "error", message: text };
+          }
           if (res.ok && data.status === "success") {
             logTerminal(data.message, "emerald");
           } else {
