@@ -40,6 +40,15 @@ class DashboardState:
         self.status_message = "Parado"
         self.account_id = config.account_id or "DOT..."
         self.account_balance = 0.0
+        self.account_type = "Demo" if ("DOT" in self.account_id or "demo" in self.account_id.lower()) else "Real"
+        self.rate_limit_status = "OK • Teto 360 req/min"
+        self.is_rate_limited = False
+        self.account_limits = {
+            "trading_budget_min": 360,
+            "portfolio_budget_min": 30,
+            "max_concurrent_contracts": 1,
+            "architecture": "Event-Driven Push (Zero Polling)"
+        }
 
         self.active_symbol = config.symbol
         self.active_asset_name = "Volatility 10"
@@ -65,6 +74,10 @@ class DashboardState:
             "status_message": self.status_message,
             "account_id": self.account_id,
             "account_balance": self.account_balance,
+            "account_type": self.account_type,
+            "rate_limit_status": self.rate_limit_status,
+            "is_rate_limited": self.is_rate_limited,
+            "account_limits": self.account_limits,
             "daily_pnl": self.risk.daily_pnl,
             "tp_target": self.config.daily_take_profit_usd,
             "sl_target": self.config.daily_stop_loss_usd,
@@ -155,25 +168,95 @@ class BotRunner:
         except asyncio.CancelledError:
             pass
 
-    async def listen_messages(self, ws):
-        """Ouve todas as mensagens em background (saldo nativo, ticks, confirmações)."""
+    async def handle_rate_limit_backoff(self, error_message: str):
+        """Aplica resfriamento inteligente de 60s quando a Deriv sinaliza rate limit."""
+        self.st.is_rate_limited = True
+        self.st.rate_limit_status = "⚠️ Resfriando (60s)"
+        self.st.latest_log = f"⚠️ Rate limit detectado ({error_message}). Ativando resfriamento automático de 60s..."
+        logger.warning(f"🛑 RATE LIMIT: {error_message}. Pausando 60 segundos...")
+        await self.st.notify_clients()
+        await asyncio.sleep(60)
+        self.st.is_rate_limited = False
+        self.st.rate_limit_status = "OK • Teto 360 req/min"
+        self.st.latest_log = "Resfriamento concluído. Retomando operações normalmente."
+        logger.info("✅ Resfriamento de rate limit concluído. Retomando...")
+        await self.st.notify_clients()
+
+    async def recv_next(self, ws, expected_msg_type: Optional[str] = None, req_id: Optional[int] = None, timeout: float = 12.0) -> Optional[Dict[str, Any]]:
+        """
+        Consome mensagens do WebSocket de forma orientada a eventos.
+        Trata atualizações de saldo e pings concorrentes sem dessincronizar.
+        """
+        start_time = asyncio.get_event_loop().time()
+        while self.st.is_running:
+            remaining = timeout - (asyncio.get_event_loop().time() - start_time)
+            if remaining <= 0:
+                logger.warning(f"Timeout aguardando resposta {expected_msg_type or req_id}")
+                return None
+
+            try:
+                raw = await asyncio.wait_for(ws.recv(), timeout=remaining)
+                m = json.loads(raw)
+            except asyncio.TimeoutError:
+                return None
+
+            # 1. Trata subscrição de Saldo nativo em tempo real
+            if m.get("msg_type") == "balance" and "balance" in m:
+                bal = float(m["balance"].get("balance", self.st.account_balance))
+                if bal != self.st.account_balance:
+                    self.st.account_balance = bal
+                    logger.info(f"💵 Saldo em tempo real: ${bal:.2f} USD")
+                    await self.st.notify_clients()
+                continue
+
+            # 2. Ignora pings de heartbeat
+            if m.get("msg_type") == "ping":
+                continue
+
+            # 3. Trata erros com detecção de Rate Limit
+            if "error" in m:
+                err = m["error"]
+                err_code = str(err.get("code", ""))
+                err_msg = str(err.get("message", ""))
+                
+                # Detecção de Rate Limit / Too Many Requests
+                if err_code in ("RateLimit", "TooManyRequests") or "rate limit" in err_msg.lower() or "too many" in err_msg.lower():
+                    await self.handle_rate_limit_backoff(err_msg)
+                elif "maximum daily turnover" in err_msg.lower() or "turnover limit" in err_msg.lower():
+                    self.st.risk.is_stopped = True
+                    self.st.risk.stop_reason = f"Limite diário de turnover atingido: {err_msg}"
+                    self.st.latest_log = f"🛑 {self.st.risk.stop_reason}"
+                    await self.st.notify_clients()
+                return m
+
+            # 4. Verifica correspondência
+            if req_id is not None and m.get("req_id") == req_id:
+                return m
+            if expected_msg_type and m.get("msg_type") == expected_msg_type:
+                return m
+            if expected_msg_type is None and req_id is None:
+                return m
+
+        return None
+
+    async def cleanup_orphaned_positions_once(self, ws):
+        """
+        Executado APENAS UMA VEZ na conexão para limpar contratos remanescentes.
+        Zero Polling: Não roda durante o ciclo normal de trade.
+        """
         try:
-            async for raw in ws:
-                msg = json.loads(raw)
-                msg_type = msg.get("msg_type")
-
-                # Subscrição nativa de Saldo da Deriv (Zero Polling)
-                if msg_type == "balance" and "balance" in msg:
-                    bal = float(msg["balance"].get("balance", self.st.account_balance))
-                    if bal != self.st.account_balance:
-                        self.st.account_balance = bal
-                        logger.info(f"💵 Saldo atualizado em tempo real via Stream Deriv: ${bal:.2f} USD")
-                        await self.st.notify_clients()
-
-        except asyncio.CancelledError:
-            pass
+            await ws.send(json.dumps({"portfolio": 1, "req_id": 999}))
+            r = await self.recv_next(ws, expected_msg_type="portfolio", req_id=999, timeout=5.0)
+            if r and "portfolio" in r:
+                contracts = r["portfolio"].get("contracts", [])
+                if contracts:
+                    logger.info(f"Identificado(s) {len(contracts)} contrato(s) órfão(s) na conexão. Liquidando...")
+                    for c in contracts:
+                        cid = c.get("contract_id")
+                        await ws.send(json.dumps({"sell": cid, "price": 0, "req_id": 998}))
+                        await asyncio.sleep(1)
         except Exception as e:
-            logger.debug(f"Stream listener finalizado: {e}")
+            logger.debug(f"Aviso na checagem inicial de portfolio: {e}")
 
     async def run_loop(self):
         self.st.is_running = True
@@ -201,18 +284,15 @@ class BotRunner:
                 async with websockets.connect(otp_url, ping_interval=None) as ws:
                     hb_task = asyncio.create_task(self.heartbeat(ws))
 
-                    # 1. Subscreve ao Saldo Nativo da Deriv em tempo real (Stream Push oficial)
+                    # 1. Subscrição nativa de Saldo Deriv em tempo real (Push Stream oficial)
                     await ws.send(json.dumps({"balance": 1, "subscribe": 1, "req_id": 1}))
 
-                    while self.st.is_running and self.st.risk.can_trade():
-                        # Garante que não há posições abertas órfãs
-                        await ws.send(json.dumps({"portfolio": 1, "req_id": 2}))
-                        r = json.loads(await ws.recv())
-                        if r.get("msg_type") == "portfolio" and r.get("portfolio", {}).get("contracts"):
-                            await asyncio.sleep(2)
-                            continue
+                    # 2. Limpeza única de contratos órfãos apenas na inicialização da conexão (Sem Polling!)
+                    await self.cleanup_orphaned_positions_once(ws)
 
-                        # Proposta
+                    # 3. Loop de Trading 100% Event-Driven (Zero Polling de Portfolio)
+                    while self.st.is_running and self.st.risk.can_trade():
+                        # A. Solicita Proposta
                         prop_req = {
                             "proposal": 1, "subscribe": 1,
                             "amount": self.st.config.stake_amount,
@@ -223,61 +303,47 @@ class BotRunner:
                         }
                         await ws.send(json.dumps(prop_req))
 
-                        prop_id, sub_id = None, None
-                        while not prop_id and self.st.is_running:
-                            m = json.loads(await ws.recv())
-                            # Trata se vier atualização de saldo no meio
-                            if m.get("msg_type") == "balance":
-                                self.st.account_balance = float(m["balance"].get("balance", self.st.account_balance))
-                                await self.st.notify_clients()
-                            elif m.get("msg_type") == "proposal" and "proposal" in m:
-                                prop_id = m["proposal"]["id"]
-                                sub_id = m.get("subscription", {}).get("id")
-                                break
-                            elif "error" in m:
-                                await asyncio.sleep(3)
-                                break
-
-                        if not prop_id:
+                        prop_resp = await self.recv_next(ws, expected_msg_type="proposal", req_id=10)
+                        if not prop_resp or "error" in prop_resp:
+                            err_msg = prop_resp.get("error", {}).get("message", "Sem resposta") if prop_resp else "Timeout"
+                            self.st.latest_log = f"Aviso de proposta: {err_msg}"
+                            await self.st.notify_clients()
+                            await asyncio.sleep(3)
                             continue
+
+                        prop_id = prop_resp.get("proposal", {}).get("id")
+                        sub_id = prop_resp.get("subscription", {}).get("id")
 
                         if sub_id:
                             await ws.send(json.dumps({"forget": sub_id}))
 
-                        # Compra
+                        # B. Executa Compra do Contrato
                         await ws.send(json.dumps({"buy": prop_id, "price": self.st.config.stake_amount, "req_id": 20}))
+                        buy_resp = await self.recv_next(ws, expected_msg_type="buy", req_id=20)
                         
-                        cid = None
-                        while not cid and self.st.is_running:
-                            m = json.loads(await ws.recv())
-                            if m.get("msg_type") == "balance":
-                                self.st.account_balance = float(m["balance"].get("balance", self.st.account_balance))
-                                await self.st.notify_clients()
-                            elif m.get("msg_type") == "buy" and "buy" in m:
-                                cid = m["buy"]["contract_id"]
-                                self.st.current_contract_id = cid
-                                self.st.in_trade = True
-                                self.st.current_ticks = 0
-                                self.st.current_profit = 0.0
-                                self.st.latest_log = f"Ordem aberta: Contrato #{cid} ({self.st.active_asset_name})"
-                                await self.st.notify_clients()
-                                break
-                            elif "error" in m:
-                                break
-
-                        if not cid:
+                        if not buy_resp or "error" in buy_resp:
+                            err_msg = buy_resp.get("error", {}).get("message", "Falha na compra") if buy_resp else "Timeout"
+                            self.st.latest_log = f"Falha na compra: {err_msg}"
+                            await self.st.notify_clients()
+                            await asyncio.sleep(3)
                             continue
 
-                        # Monitora proposal_open_contract
+                        cid = buy_resp.get("buy", {}).get("contract_id")
+                        self.st.current_contract_id = cid
+                        self.st.in_trade = True
+                        self.st.current_ticks = 0
+                        self.st.current_profit = 0.0
+                        self.st.latest_log = f"Ordem aberta: Contrato #{cid} ({self.st.active_asset_name})"
+                        await self.st.notify_clients()
+
+                        # C. Monitoramento em Tempo Real via Stream Push (proposal_open_contract)
                         await ws.send(json.dumps({"proposal_open_contract": 1, "contract_id": cid, "subscribe": 1, "req_id": 30}))
                         poc_sub = None
                         trade_done = False
 
                         while not trade_done and self.st.is_running:
-                            m = json.loads(await ws.recv())
-                            if m.get("msg_type") == "balance":
-                                self.st.account_balance = float(m["balance"].get("balance", self.st.account_balance))
-                                await self.st.notify_clients()
+                            m = await self.recv_next(ws)
+                            if not m:
                                 continue
 
                             if m.get("msg_type") != "proposal_open_contract":
@@ -286,7 +352,6 @@ class BotRunner:
                             c = m.get("proposal_open_contract", {})
                             poc_sub = m.get("subscription", {}).get("id")
 
-                            # A Deriv retorna o total de ticks passados dentro de 'tick_stream'
                             tick_stream = c.get("tick_stream", [])
                             self.st.current_ticks = len(tick_stream)
                             self.st.current_profit = float(c.get("profit", 0.0))
@@ -295,6 +360,7 @@ class BotRunner:
 
                             await self.st.notify_clients()
 
+                            # Se o contrato encerrou nativamente (ex: bateu barreira)
                             if is_sold:
                                 p_final = float(c.get("profit", 0.0))
                                 self.st.risk.register_trade(p_final)
@@ -302,37 +368,32 @@ class BotRunner:
                                 trade_done = True
                                 break
 
-                            # Cash Out estrito no 5º tick (ou exit_ticks configurado)
+                            # D. Cash Out Automatizado ao atingir os ticks estipulados
                             if self.st.current_ticks >= self.st.config.exit_ticks and is_valid_to_sell:
                                 self.st.latest_log = f"Alvo de {self.st.config.exit_ticks} ticks atingido! Disparando Cash Out..."
                                 await self.st.notify_clients()
                                 await ws.send(json.dumps({"sell": cid, "price": 0, "req_id": 40}))
                                 
-                                while True:
-                                    sm = json.loads(await ws.recv())
-                                    if sm.get("msg_type") == "balance":
-                                        self.st.account_balance = float(sm["balance"].get("balance", self.st.account_balance))
-                                        await self.st.notify_clients()
-                                    elif sm.get("msg_type") == "sell":
-                                        sold_for = float(sm["sell"]["sold_for"])
-                                        net = sold_for - self.st.config.stake_amount
-                                        self.st.risk.register_trade(net)
-                                        self._record_trade(net)
-                                        self.st.latest_log = f"CASH OUT: +${net:.2f} no {self.st.current_ticks}º tick"
-                                        trade_done = True
-                                        break
-                                    elif "error" in sm:
-                                        break
+                                sell_resp = await self.recv_next(ws, expected_msg_type="sell", req_id=40)
+                                if sell_resp and "sell" in sell_resp:
+                                    sold_for = float(sell_resp["sell"]["sold_for"])
+                                    net = sold_for - self.st.config.stake_amount
+                                    self.st.risk.register_trade(net)
+                                    self._record_trade(net)
+                                    self.st.latest_log = f"CASH OUT CONFIRMADO: +${net:.2f} no {self.st.current_ticks}º tick"
+                                trade_done = True
+                                break
 
                         if poc_sub:
                             await ws.send(json.dumps({"forget": poc_sub}))
 
                         self.st.in_trade = False
+                        self.st.current_contract_id = None
                         trade_count_scan += 1
                         await self.st.notify_clients()
 
-                        # Reavaliação a cada 5 trades
-                        if trade_count_scan >= 5:
+                        # Reavaliação inteligente a cada 5 trades
+                        if trade_count_scan >= 5 and self.st.config.auto_select_best_asset:
                             w = await find_safest_asset(self.st.config.public_ws_url, self.st.config.exit_ticks, self.st.config.growth_rate)
                             self.st.active_symbol = w["symbol"]
                             self.st.active_asset_name = w["name"]
@@ -340,6 +401,7 @@ class BotRunner:
                             trade_count_scan = 0
                             await self.st.notify_clients()
 
+                        # Pausa de segurança saudável entre ciclos para respeitar rate limits
                         if self.st.risk.can_trade() and self.st.is_running:
                             await asyncio.sleep(5)
 

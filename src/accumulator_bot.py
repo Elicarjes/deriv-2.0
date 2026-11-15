@@ -94,32 +94,71 @@ class AccumulatorBot:
         except asyncio.CancelledError:
             pass
 
-    async def ensure_no_open_positions(self, ws):
-        """Garante que qualquer contrato anterior esteja totalmente liquidado antes de nova compra."""
+    async def handle_rate_limit_backoff(self, error_message: str):
+        """Aplica resfriamento de 60s quando a Deriv sinaliza rate limit."""
+        logger.warning(f"🛑 RATE LIMIT DETECTADO ({error_message}). Pausando 60 segundos para resfriamento...")
+        await asyncio.sleep(60)
+        logger.info("✅ Resfriamento concluído. Retomando operações...")
+
+    async def recv_next(self, ws, expected_msg_type: Optional[str] = None, req_id: Optional[int] = None, timeout: float = 12.0) -> Optional[dict]:
+        """Consome mensagens do WebSocket de forma orientada a eventos sem dessincronização."""
+        start_time = asyncio.get_event_loop().time()
         while self.is_running:
-            await ws.send(json.dumps({"portfolio": 1, "req_id": 5}))
-            res = json.loads(await ws.recv())
-            # Se for resposta de ping/outra, procura a resposta do portfolio
-            if res.get("msg_type") == "portfolio":
+            remaining = timeout - (asyncio.get_event_loop().time() - start_time)
+            if remaining <= 0:
+                logger.warning(f"Timeout aguardando {expected_msg_type or req_id}")
+                return None
+
+            try:
+                raw = await asyncio.wait_for(ws.recv(), timeout=remaining)
+                m = json.loads(raw)
+            except asyncio.TimeoutError:
+                return None
+
+            if m.get("msg_type") == "ping":
+                continue
+
+            if "error" in m:
+                err = m["error"]
+                err_code = str(err.get("code", ""))
+                err_msg = str(err.get("message", ""))
+                if err_code in ("RateLimit", "TooManyRequests") or "rate limit" in err_msg.lower() or "too many" in err_msg.lower():
+                    await self.handle_rate_limit_backoff(err_msg)
+                elif "maximum daily turnover" in err_msg.lower() or "turnover limit" in err_msg.lower():
+                    self.risk.is_stopped = True
+                    self.risk.stop_reason = f"Limite diário de turnover atingido: {err_msg}"
+                    logger.error(f"🛑 {self.risk.stop_reason}")
+                return m
+
+            if req_id is not None and m.get("req_id") == req_id:
+                return m
+            if expected_msg_type and m.get("msg_type") == expected_msg_type:
+                return m
+            if expected_msg_type is None and req_id is None:
+                return m
+
+        return None
+
+    async def cleanup_orphaned_positions_once(self, ws):
+        """Executado APENAS UMA VEZ na conexão para limpar contratos remanescentes (Zero Polling)."""
+        try:
+            await ws.send(json.dumps({"portfolio": 1, "req_id": 999}))
+            res = await self.recv_next(ws, expected_msg_type="portfolio", req_id=999, timeout=5.0)
+            if res and res.get("msg_type") == "portfolio":
                 contracts = res.get("portfolio", {}).get("contracts", [])
-                if not contracts:
-                    return True
-                logger.info(f"Aguardando liquidação de {len(contracts)} contrato(s) em aberto na Deriv...")
-                for c in contracts:
-                    cid = c.get("contract_id")
-                    # Tenta forçar o sell se estiver aberto há tempo
-                    await ws.send(json.dumps({"sell": cid, "price": 0, "req_id": 6}))
-                await asyncio.sleep(2)
-            else:
-                await asyncio.sleep(1)
+                if contracts:
+                    logger.info(f"Identificado(s) {len(contracts)} contrato(s) órfão(s). Liquidando...")
+                    for c in contracts:
+                        cid = c.get("contract_id")
+                        await ws.send(json.dumps({"sell": cid, "price": 0, "req_id": 998}))
+                        await asyncio.sleep(1)
+        except Exception as e:
+            logger.debug(f"Aviso na checagem inicial de portfolio: {e}")
 
     async def execute_trade(self, ws):
-        """Executa um ciclo completo de trade com monitoramento de ticks e Cash Out."""
+        """Executa um ciclo completo de trade com monitoramento de ticks e Cash Out (Zero Polling)."""
         if not self.risk.can_trade():
             return
-
-        # Garante que a conta não tem posição aberta concorrente
-        await self.ensure_no_open_positions(ws)
 
         logger.info(f"⚡ Iniciando ciclo de trade ({self.active_asset_name} [{self.active_symbol}] ACCU {self.config.growth_rate*100:.0f}%/tick | Stake: ${self.config.stake_amount:.2f})...")
 
@@ -137,22 +176,17 @@ class AccumulatorBot:
         }
         await ws.send(json.dumps(proposal_req))
 
-        proposal_id = None
-        sub_id = None
+        prop_msg = await self.recv_next(ws, expected_msg_type="proposal", req_id=10)
+        if not prop_msg or "error" in prop_msg:
+            err = prop_msg.get("error", {}).get("message", "Sem resposta") if prop_msg else "Timeout"
+            logger.error(f"Erro na proposta: {err}")
+            await asyncio.sleep(5)
+            return
 
-        while not proposal_id and self.is_running:
-            msg = json.loads(await ws.recv())
-            if msg.get("msg_type") == "proposal" and "proposal" in msg:
-                proposal_id = msg["proposal"]["id"]
-                sub_id = msg.get("subscription", {}).get("id")
-                spot = msg["proposal"].get("spot")
-                logger.info(f"Proposta aprovada (ID: {proposal_id[:8]}... | Spot: {spot})")
-                break
-            elif "error" in msg:
-                logger.error(f"Erro na proposta: {msg['error']['message']}")
-                # Se há posições abertas órfãs, espera 5 segundos
-                await asyncio.sleep(5)
-                return
+        proposal_id = prop_msg["proposal"]["id"]
+        sub_id = prop_msg.get("subscription", {}).get("id")
+        spot = prop_msg["proposal"].get("spot")
+        logger.info(f"Proposta aprovada (ID: {proposal_id[:8]}... | Spot: {spot})")
 
         if sub_id:
             await ws.send(json.dumps({"forget": sub_id}))
@@ -165,19 +199,18 @@ class AccumulatorBot:
         }
         await ws.send(json.dumps(buy_req))
 
-        contract_id = None
-        while not contract_id and self.is_running:
-            msg = json.loads(await ws.recv())
-            if msg.get("msg_type") == "buy" and "buy" in msg:
-                contract_id = msg["buy"]["contract_id"]
-                self.current_contract_id = contract_id
-                logger.info(f"🛒 Ordem Comprada! Contrato #{contract_id}")
-                break
-            elif "error" in msg:
-                logger.error(f"Falha na compra: {msg['error']['message']}")
-                return
+        buy_msg = await self.recv_next(ws, expected_msg_type="buy", req_id=20)
+        if not buy_msg or "error" in buy_msg:
+            err = buy_msg.get("error", {}).get("message", "Falha na compra") if buy_msg else "Timeout"
+            logger.error(f"Falha na compra: {err}")
+            await asyncio.sleep(3)
+            return
 
-        # 3. Acompanhamento em tempo real
+        contract_id = buy_msg["buy"]["contract_id"]
+        self.current_contract_id = contract_id
+        logger.info(f"🛒 Ordem Comprada! Contrato #{contract_id}")
+
+        # 3. Acompanhamento em tempo real via Stream Push
         poc_req = {
             "proposal_open_contract": 1,
             "contract_id": contract_id,
@@ -190,10 +223,8 @@ class AccumulatorBot:
         trade_finished = False
 
         while not trade_finished and self.is_running:
-            msg = json.loads(await ws.recv())
-            
-            # Trata respostas de ping se chegarem
-            if msg.get("msg_type") == "ping":
+            msg = await self.recv_next(ws)
+            if not msg:
                 continue
 
             if msg.get("msg_type") != "proposal_open_contract":
@@ -225,20 +256,15 @@ class AccumulatorBot:
                 sell_req = {"sell": contract_id, "price": 0, "req_id": 40}
                 await ws.send(json.dumps(sell_req))
 
-                # Aguarda confirmação do Cash Out
-                while True:
-                    sell_msg = json.loads(await ws.recv())
-                    if sell_msg.get("msg_type") == "sell":
-                        sold_for = float(sell_msg["sell"]["sold_for"])
-                        net_profit = sold_for - self.config.stake_amount
-                        logger.info(f"💰 CASH OUT CONFIRMADO: Recebido ${sold_for:.2f} (Lucro: ${net_profit:+.2f})")
-                        self.risk.register_trade(net_profit)
-                        self.current_contract_id = None
-                        trade_finished = True
-                        break
-                    elif "error" in sell_msg:
-                        logger.warning(f"Aviso de venda: {sell_msg['error']['message']}")
-                        break
+                sell_msg = await self.recv_next(ws, expected_msg_type="sell", req_id=40)
+                if sell_msg and "sell" in sell_msg:
+                    sold_for = float(sell_msg["sell"]["sold_for"])
+                    net_profit = sold_for - self.config.stake_amount
+                    logger.info(f"💰 CASH OUT CONFIRMADO: Recebido ${sold_for:.2f} (Lucro: ${net_profit:+.2f})")
+                    self.risk.register_trade(net_profit)
+                trade_finished = True
+                self.current_contract_id = None
+                break
 
         if poc_sub_id:
             await ws.send(json.dumps({"forget": poc_sub_id}))
@@ -270,6 +296,9 @@ class AccumulatorBot:
                 ) as ws:
                     self.active_ws = ws
                     hb_task = asyncio.create_task(self.heartbeat(ws))
+
+                    # Limpeza única de contratos órfãos apenas na conexão (Zero Polling)
+                    await self.cleanup_orphaned_positions_once(ws)
 
                     while self.risk.can_trade() and self.is_running:
                         await self.execute_trade(ws)

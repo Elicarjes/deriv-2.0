@@ -46,6 +46,13 @@
       <div class="bg-slate-800/80 border border-slate-700/80 rounded-lg px-3 py-1.5 text-xs flex items-center gap-2">
         <span class="text-slate-400">Conta:</span>
         <span id="account-id" class="font-mono font-semibold text-slate-200">DOT93505571</span>
+        <span id="account-type-badge" class="px-1.5 py-0.2 rounded text-[10px] font-bold bg-amber-950/80 border border-amber-500/40 text-amber-300">DEMO</span>
+      </div>
+
+      <!-- Badge Rate Limit API (Monitoramento Anti-Bloqueio) -->
+      <div id="rate-limit-badge" class="bg-slate-800/80 border border-slate-700/80 rounded-lg px-2.5 py-1.5 text-xs flex items-center gap-1.5">
+        <span class="text-slate-400">API Rate:</span>
+        <span id="rate-limit-text" class="font-mono font-semibold text-emerald-400">OK (360/min)</span>
       </div>
 
       <!-- Saldo da Conta em Tempo Real (Subscrição Nativa Deriv) -->
@@ -335,6 +342,27 @@
         document.getElementById("account-balance").innerText = `$${parseFloat(data.account_balance).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`;
       }
       document.getElementById("account-id").innerText = data.account_id || "DOT...";
+      
+      const typeBadge = document.getElementById("account-type-badge");
+      if (typeBadge && data.account_type) {
+        typeBadge.innerText = data.account_type.toUpperCase();
+        if (data.account_type.toLowerCase() === "real") {
+          typeBadge.className = "px-1.5 py-0.2 rounded text-[10px] font-bold bg-emerald-950/80 border border-emerald-500/40 text-emerald-300";
+        } else {
+          typeBadge.className = "px-1.5 py-0.2 rounded text-[10px] font-bold bg-amber-950/80 border border-amber-500/40 text-amber-300";
+        }
+      }
+
+      const rlText = document.getElementById("rate-limit-text");
+      if (rlText) {
+        if (data.is_rate_limited) {
+          rlText.innerText = "Resfriando (60s)";
+          rlText.className = "font-mono font-bold text-amber-400 animate-pulse";
+        } else {
+          rlText.innerText = "OK (Teto 360/m)";
+          rlText.className = "font-mono font-semibold text-emerald-400";
+        }
+      }
 
       // PnL
       const pnl = data.daily_pnl || 0.0;
