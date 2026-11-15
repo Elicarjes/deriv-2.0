@@ -123,28 +123,46 @@
     <!-- KPI Grid Superior -->
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
       <!-- PnL Diário -->
-      <div class="bg-slate-900/80 border border-slate-800/80 rounded-2xl p-5 shadow-lg">
-        <div class="flex items-center justify-between text-slate-400 text-xs mb-2">
-          <span>LUCRO/PREJUÍZO SESSÃO</span>
-          <i data-lucide="trending-up" class="w-4 h-4 text-emerald-400"></i>
+      <div class="bg-slate-900/80 border border-slate-800/80 rounded-2xl p-5 shadow-lg flex flex-col justify-between">
+        <div>
+          <div class="flex items-center justify-between text-slate-400 text-xs mb-2">
+            <span class="flex items-center gap-1.5 font-bold uppercase tracking-wider text-[11px]">
+              LUCRO/PREJUÍZO SESSÃO
+              <span id="pnl-account-badge" class="px-1.5 py-0.2 rounded text-[9px] font-bold bg-emerald-950 border border-emerald-500/40 text-emerald-300">CONTA PRIMÁRIA</span>
+            </span>
+            <i data-lucide="trending-up" class="w-4 h-4 text-emerald-400"></i>
+          </div>
+          <div id="pnl-value" class="text-3xl font-extrabold tracking-tight font-mono text-emerald-400">
+            +$0.00
+          </div>
+          <div class="text-[11px] text-slate-500 mt-2 flex items-center justify-between">
+            <span>Meta: <strong id="tp-target" class="text-emerald-400 font-mono">+$2.00</strong></span>
+            <span>Stop: <strong id="sl-target" class="text-rose-400 font-mono">-$2.00</strong></span>
+          </div>
         </div>
-        <div id="pnl-value" class="text-3xl font-extrabold tracking-tight font-mono text-emerald-400">
-          +$0.00
-        </div>
-        <div class="text-[11px] text-slate-500 mt-2 flex items-center justify-between">
-          <span>Meta: <strong id="tp-target" class="text-emerald-400 font-mono">+$2.00</strong></span>
-          <span>Stop: <strong id="sl-target" class="text-rose-400 font-mono">-$2.00</strong></span>
+        <!-- Estatística do Escudo Demo (quando em modo shield_combined) -->
+        <div id="shield-stats-row" class="mt-2.5 pt-2 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400">
+          <span class="flex items-center gap-1 text-purple-300 font-medium">
+            <i data-lucide="shield" class="w-3 h-3 text-purple-400"></i>
+            <span>Escudo Demo:</span>
+          </span>
+          <span class="font-mono text-xs">
+            <span id="shield-pnl-value" class="font-bold text-slate-300">+$0.00</span>
+            <span class="text-slate-500 text-[10px] ml-1">(<span id="shield-placar">0W/0L</span>)</span>
+          </span>
         </div>
       </div>
 
       <!-- Assertividade -->
-      <div class="bg-slate-900/80 border border-slate-800/80 rounded-2xl p-5 shadow-lg">
-        <div class="flex items-center justify-between text-slate-400 text-xs mb-2">
-          <span>ASSERTIVIDADE</span>
-          <i data-lucide="target" class="w-4 h-4 text-cyan-400"></i>
-        </div>
-        <div id="win-rate" class="text-3xl font-extrabold tracking-tight font-mono text-cyan-400">
-          0.0%
+      <div class="bg-slate-900/80 border border-slate-800/80 rounded-2xl p-5 shadow-lg flex flex-col justify-between">
+        <div>
+          <div class="flex items-center justify-between text-slate-400 text-xs mb-2">
+            <span class="font-bold uppercase tracking-wider text-[11px]">ASSERTIVIDADE (PRIMÁRIA)</span>
+            <i data-lucide="target" class="w-4 h-4 text-cyan-400"></i>
+          </div>
+          <div id="win-rate" class="text-3xl font-extrabold tracking-tight font-mono text-cyan-400">
+            0.0%
+          </div>
         </div>
         <div class="w-full bg-slate-800 rounded-full h-1.5 mt-3 overflow-hidden">
           <div id="win-rate-bar" class="bg-cyan-500 h-1.5 rounded-full transition-all duration-300" style="width: 0%"></div>
@@ -152,21 +170,23 @@
       </div>
 
       <!-- Vitórias vs Derrotas -->
-      <div class="bg-slate-900/80 border border-slate-800/80 rounded-2xl p-5 shadow-lg">
-        <div class="flex items-center justify-between text-slate-400 text-xs mb-2">
-          <span class="flex items-center gap-1.5">
-            PLACAR
-            <span id="active-session-badge" class="px-1.5 py-0.2 rounded text-[10px] font-bold bg-indigo-950/80 border border-indigo-500/40 text-indigo-300">Sessão #1</span>
-          </span>
-          <i data-lucide="activity" class="w-4 h-4 text-indigo-400"></i>
-        </div>
-        <div class="flex items-baseline gap-2">
-          <span id="wins-count" class="text-3xl font-extrabold text-emerald-400 font-mono">0W</span>
-          <span class="text-slate-600 font-mono text-lg">/</span>
-          <span id="losses-count" class="text-3xl font-extrabold text-rose-400 font-mono">0L</span>
+      <div class="bg-slate-900/80 border border-slate-800/80 rounded-2xl p-5 shadow-lg flex flex-col justify-between">
+        <div>
+          <div class="flex items-center justify-between text-slate-400 text-xs mb-2">
+            <span class="flex items-center gap-1.5 font-bold uppercase tracking-wider text-[11px]">
+              PLACAR (PRIMÁRIA)
+              <span id="active-session-badge" class="px-1.5 py-0.2 rounded text-[10px] font-bold bg-indigo-950/80 border border-indigo-500/40 text-indigo-300">Sessão #1</span>
+            </span>
+            <i data-lucide="activity" class="w-4 h-4 text-indigo-400"></i>
+          </div>
+          <div class="flex items-baseline gap-2">
+            <span id="wins-count" class="text-3xl font-extrabold text-emerald-400 font-mono">0W</span>
+            <span class="text-slate-600 font-mono text-lg">/</span>
+            <span id="losses-count" class="text-3xl font-extrabold text-rose-400 font-mono">0L</span>
+          </div>
         </div>
         <p class="text-[11px] text-slate-500 mt-2">
-          Total: <span id="total-trades" class="font-mono text-slate-300">0</span> ciclos
+          Total: <span id="total-trades" class="font-mono text-slate-300">0</span> ciclos na Primária
         </p>
       </div>
 
@@ -784,7 +804,7 @@
         }
       }
 
-      // 3. PnL e Metas
+      // 3. PnL e Metas da Conta Primária
       const pnl = data.daily_pnl || 0.0;
       const pnlEl = document.getElementById("pnl-value");
       pnlEl.innerText = `${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`;
@@ -792,6 +812,36 @@
 
       document.getElementById("tp-target").innerText = `+$${data.tp_target?.toFixed(2) || '2.00'}`;
       document.getElementById("sl-target").innerText = `-$${data.sl_target?.toFixed(2) || '2.00'}`;
+
+      // Estatísticas do Escudo Demo
+      const shieldStatsRow = document.getElementById("shield-stats-row");
+      const shieldPnlEl = document.getElementById("shield-pnl-value");
+      const shieldPlacarEl = document.getElementById("shield-placar");
+      const pnlBadge = document.getElementById("pnl-account-badge");
+
+      if (data.operation_mode === "shield_combined") {
+        if (shieldStatsRow) shieldStatsRow.classList.remove("hidden");
+        if (pnlBadge) {
+          pnlBadge.innerText = "CONTA PRIMÁRIA";
+          pnlBadge.className = "px-1.5 py-0.2 rounded text-[9px] font-bold bg-emerald-950 border border-emerald-500/40 text-emerald-300";
+        }
+        if (shieldPnlEl) {
+          const sPnl = data.shield_pnl || 0.0;
+          shieldPnlEl.innerText = `${sPnl >= 0 ? '+' : ''}$${sPnl.toFixed(2)}`;
+          shieldPnlEl.className = `font-bold ${sPnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}`;
+        }
+        if (shieldPlacarEl) {
+          shieldPlacarEl.innerText = `${data.shield_wins || 0}W / ${data.shield_losses || 0}L`;
+        }
+      } else {
+        if (shieldStatsRow) shieldStatsRow.classList.add("hidden");
+        if (pnlBadge) {
+          pnlBadge.innerText = data.operation_mode === "secondary_only" ? "CONTA SECUNDÁRIA" : "CONTA PRIMÁRIA";
+          pnlBadge.className = data.operation_mode === "secondary_only"
+            ? "px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-950 border border-amber-500/40 text-amber-300"
+            : "px-1.5 py-0.2 rounded text-[9px] font-bold bg-emerald-950 border border-emerald-500/40 text-emerald-300";
+        }
+      }
 
       // 4. Assertividade e Placar
       const winRate = data.win_rate || 0.0;

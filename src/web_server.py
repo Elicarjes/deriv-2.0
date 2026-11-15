@@ -69,6 +69,9 @@ class DashboardState:
         self.shield_losses_count = 0
         self.sniper_armed = False
         self.active_trade_account = "primary" if self.operation_mode == "primary_only" else "secondary"
+        self.shield_wins = 0
+        self.shield_losses = 0
+        self.shield_pnl = 0.0
 
         active_acc = self.primary_account if self.active_trade_account == "primary" else self.secondary_account
         self.is_running = False
@@ -160,6 +163,11 @@ class DashboardState:
         self.risk = RiskManager(self.config)
         self.recent_trades.clear()
         self.session_trades.clear()
+        self.shield_wins = 0
+        self.shield_losses = 0
+        self.shield_pnl = 0.0
+        self.shield_losses_count = 0
+        self.sniper_armed = False
         self.session_start_time = datetime.now()
         self.session_number = self.session_manager.get_next_session_number()
         self.session_id = f"sess_{int(datetime.now().timestamp())}"
@@ -215,6 +223,13 @@ class DashboardState:
             "shield_trigger_losses": self.shield_trigger_losses,
             "shield_losses_count": self.shield_losses_count,
             "sniper_armed": self.sniper_armed,
+            "shield_pnl": round(self.shield_pnl, 2),
+            "shield_wins": self.shield_wins,
+            "shield_losses": self.shield_losses,
+            "primary_account_balance": self.primary_account.balance,
+            "primary_account_id": self.primary_account.account_id,
+            "secondary_account_balance": self.secondary_account.balance,
+            "secondary_account_id": self.secondary_account.account_id,
             "active_trade_account": self.active_trade_account,
             "primary_account": self.primary_account.to_dict(),
             "secondary_account": self.secondary_account.to_dict()
@@ -562,7 +577,17 @@ class BotRunner:
                             # Se o contrato encerrou nativamente (ex: bateu barreira)
                             if is_sold:
                                 p_final = float(c.get("profit", 0.0))
-                                self.st.risk.register_trade(p_final)
+                                is_shield_trade = (self.st.operation_mode == "shield_combined" and target_account.account_role == "secondary")
+                                if is_shield_trade:
+                                    self.st.shield_pnl += p_final
+                                    if p_final > 0:
+                                        self.st.shield_wins += 1
+                                    else:
+                                        self.st.shield_losses += 1
+                                else:
+                                    # Contabiliza na Conta Primária (Alvo Sniper / Real)
+                                    self.st.risk.register_trade(p_final)
+
                                 self._record_trade(
                                     p_final,
                                     ticks=self.st.current_ticks,
@@ -584,7 +609,16 @@ class BotRunner:
                                 if sell_resp and "sell" in sell_resp:
                                     sold_for = float(sell_resp["sell"]["sold_for"])
                                     net = sold_for - self.st.config.stake_amount
-                                    self.st.risk.register_trade(net)
+                                    is_shield_trade = (self.st.operation_mode == "shield_combined" and target_account.account_role == "secondary")
+                                    if is_shield_trade:
+                                        self.st.shield_pnl += net
+                                        if net > 0:
+                                            self.st.shield_wins += 1
+                                        else:
+                                            self.st.shield_losses += 1
+                                    else:
+                                        self.st.risk.register_trade(net)
+
                                     self._record_trade(
                                         net,
                                         ticks=self.st.current_ticks,
