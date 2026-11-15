@@ -84,6 +84,24 @@ Acesse no seu navegador: **`http://localhost:8000`** e clique em **"Iniciar"** p
 
 ---
 
+## 📚 Documentação Oficial & Integração com IA / LLMs
+
+O projeto segue as diretrizes da nova arquitetura da Deriv preparada para Agentes de IA e modelos de linguagem:
+- **Deriv AI Hub & LLMs:** [`https://developers.deriv.com/llms.txt`](https://developers.deriv.com/llms.txt)
+- **Model Context Protocol (MCP):** [`https://mcp-api.deriv.com/mcp`](https://mcp-api.deriv.com/mcp)
+- **Guia Completo da API v2 e Multi-Contas:** Consulte [`docs/deriv_api_v2_reference.md`](docs/deriv_api_v2_reference.md).
+
+---
+
+## 🛡️ Arquitetura Multi-Contas e Conta Escudo (Ghost Trading)
+
+O sistema foi concebido para suportar conexão simultânea de múltiplos Personal Access Tokens (PATs) de forma nativa e isolada:
+- **Conta Secundária (Escudo / Virtual):** Absorve a variância do mercado e monitora sequências de perdas (Loss Streaks).
+- **Conta Primária (Real):** Dispara entradas apenas após gatilhos estatísticos favoráveis (ex: $X$ derrotas seguidas na conta escudo).
+- **Sem Conflito:** Cada conta opera em seu socket WebSocket autenticado independente, sem sobrecarga ou gambiarras.
+
+---
+
 ## ⚠️ Aviso Legal (Disclaimer)
 
 Este software foi desenvolvido para fins educacionais, de pesquisa quantitativa e simulação em ambiente virtual (Demo). Negociar derivativos financeiros e índices sintéticos envolve risco substancial de perda de capital.
