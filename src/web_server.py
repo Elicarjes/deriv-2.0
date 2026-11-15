@@ -23,6 +23,7 @@ import websockets
 from config import BotConfig
 from risk_manager import RiskManager
 from asset_selector import find_safest_asset
+from session_manager import SessionManager
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("WebServer")
@@ -37,6 +38,12 @@ class DashboardState:
     def __init__(self, config: BotConfig):
         self.config = config
         self.risk = RiskManager(config)
+        self.session_manager = SessionManager(BASE_DIR / "data" / "sessions.json")
+        self.session_number = self.session_manager.get_next_session_number()
+        self.session_id = f"sess_{int(datetime.now().timestamp())}"
+        self.session_start_time = datetime.now()
+        self.session_trades: List[Dict[str, Any]] = []
+
         self.is_running = False
         self.status_message = "Parado"
         self.account_id = config.account_id or "DOT..."
@@ -68,6 +75,63 @@ class DashboardState:
 
         # Gerenciamento de conexões WebSocket do frontend (Event-Driven)
         self.connected_websockets: Set[WebSocket] = set()
+
+    def archive_current_session(self) -> Optional[Dict[str, Any]]:
+        """Arquiva a sessão corrente caso tenha executado ao menos 1 trade."""
+        if not self.session_trades and self.risk.total_trades == 0:
+            return None
+
+        now = datetime.now()
+        duration_sec = int((now - self.session_start_time).total_seconds())
+        m, s = divmod(duration_sec, 60)
+        h, m = divmod(m, 60)
+        dur_str = f"{h}h {m}m {s}s" if h > 0 else f"{m}m {s}s"
+
+        win_rate = (self.risk.wins / self.risk.total_trades * 100) if self.risk.total_trades > 0 else 0.0
+
+        session_record = {
+            "id": self.session_id,
+            "number": self.session_number,
+            "name": f"Sessão #{self.session_number}",
+            "start_time": self.session_start_time.strftime("%d/%m/%Y %H:%M:%S"),
+            "end_time": now.strftime("%d/%m/%Y %H:%M:%S"),
+            "duration": dur_str,
+            "config": {
+                "growth_rate": self.config.growth_rate,
+                "stake_amount": self.config.stake_amount,
+                "exit_ticks": self.config.exit_ticks,
+                "daily_stop_loss_usd": self.config.daily_stop_loss_usd,
+                "daily_take_profit_usd": self.config.daily_take_profit_usd,
+                "max_consecutive_losses": self.config.max_consecutive_losses,
+                "wait_cycle_reset": self.config.wait_cycle_reset,
+                "max_entry_tick": self.config.max_entry_tick
+            },
+            "summary": {
+                "pnl": round(self.risk.daily_pnl, 2),
+                "wins": self.risk.wins,
+                "losses": self.risk.losses,
+                "total_trades": self.risk.total_trades,
+                "win_rate": round(win_rate, 1),
+                "max_win_streak": self.risk.max_win_streak,
+                "max_loss_streak": self.risk.max_loss_streak,
+                "streaks": self.risk.get_streaks_summary()
+            },
+            "trades": list(self.session_trades)
+        }
+        self.session_manager.archive_session(session_record)
+        return session_record
+
+    def start_new_session(self, reason: str = "Novo ciclo de testes iniciado"):
+        """Arquiva a sessão corrente (se tiver trades) e reinicia o estado para uma nova sessão limpa."""
+        self.archive_current_session()
+        self.risk = RiskManager(self.config)
+        self.recent_trades.clear()
+        self.session_trades.clear()
+        self.session_start_time = datetime.now()
+        self.session_number = self.session_manager.get_next_session_number()
+        self.session_id = f"sess_{int(datetime.now().timestamp())}"
+        self.latest_log = f"✨ Nova Sessão #{self.session_number} iniciada! ({reason})"
+        logger.info(f"✨ Nova Sessão #{self.session_number} iniciada ({reason}).")
 
     def to_dict(self) -> Dict[str, Any]:
         win_rate = (self.risk.wins / self.risk.total_trades * 100) if self.risk.total_trades > 0 else 0.0
@@ -105,7 +169,11 @@ class DashboardState:
             "current_profit": self.current_profit,
             "recent_trades": self.recent_trades[:15],
             "latest_log": self.latest_log,
-            "streaks": self.risk.get_streaks_summary()
+            "streaks": self.risk.get_streaks_summary(),
+            "session_id": self.session_id,
+            "session_number": self.session_number,
+            "session_start_time": self.session_start_time.strftime("%H:%M:%S"),
+            "archived_sessions_count": len(self.session_manager.get_all_sessions())
         }
 
     async def notify_clients(self):
@@ -420,7 +488,7 @@ class BotRunner:
                             if is_sold:
                                 p_final = float(c.get("profit", 0.0))
                                 self.st.risk.register_trade(p_final)
-                                self._record_trade(p_final)
+                                self._record_trade(p_final, ticks=self.st.current_ticks, contract_id=cid)
                                 trade_done = True
                                 break
 
@@ -435,7 +503,7 @@ class BotRunner:
                                     sold_for = float(sell_resp["sell"]["sold_for"])
                                     net = sold_for - self.st.config.stake_amount
                                     self.st.risk.register_trade(net)
-                                    self._record_trade(net)
+                                    self._record_trade(net, ticks=self.st.current_ticks, contract_id=cid)
                                     self.st.latest_log = f"CASH OUT CONFIRMADO: +${net:.2f} no {self.st.current_ticks}º tick"
                                 trade_done = True
                                 break
@@ -472,18 +540,24 @@ class BotRunner:
         if not self.st.risk.can_trade():
             self.st.status_message = "Meta/Stop Batido"
             self.st.latest_log = f"FIM DE SESSÃO: {self.st.risk.stop_reason}"
+            self.st.archive_current_session()
         else:
             self.st.status_message = "Parado"
         await self.st.notify_clients()
 
-    def _record_trade(self, profit: float):
+    def _record_trade(self, profit: float, ticks: int = 0, contract_id: Optional[int] = None):
         now = datetime.now().strftime("%H:%M:%S")
-        self.st.recent_trades.insert(0, {
+        trade_item = {
             "time": now,
             "symbol": self.st.active_asset_name,
             "stake": self.st.config.stake_amount,
-            "profit": profit
-        })
+            "profit": round(profit, 2),
+            "result": "VITÓRIA" if profit > 0 else "DERROTA",
+            "ticks": ticks or self.st.current_ticks,
+            "contract_id": contract_id or self.st.current_contract_id
+        }
+        self.st.recent_trades.insert(0, trade_item)
+        self.st.session_trades.insert(0, trade_item)
 
 
 runner = BotRunner(state)
@@ -561,6 +635,7 @@ class ConfigUpdateRequest(BaseModel):
     max_consecutive_losses: int
     wait_cycle_reset: bool = True
     max_entry_tick: int = 1
+    start_new_session: bool = False
 
 
 @app.get("/api/config")
@@ -593,8 +668,11 @@ async def update_config(cfg_in: ConfigUpdateRequest):
     state.config.wait_cycle_reset = bool(cfg_in.wait_cycle_reset)
     state.config.max_entry_tick = int(cfg_in.max_entry_tick)
 
-    # Reavalia o RiskManager se estava bloqueado por meta anterior
-    if state.risk.is_stopped:
+    # Se o usuário solicitou iniciar como uma nova sessão de teste
+    if cfg_in.start_new_session and not state.in_trade:
+        state.start_new_session("Parâmetros atualizados no painel")
+    elif state.risk.is_stopped:
+        # Reavalia o RiskManager se estava bloqueado por meta anterior
         if (state.risk.daily_pnl > -abs(state.config.daily_stop_loss_usd) and
             state.risk.daily_pnl < abs(state.config.daily_take_profit_usd) and
             state.risk.current_loss_streak < state.config.max_consecutive_losses):
@@ -633,6 +711,56 @@ async def update_config(cfg_in: ConfigUpdateRequest):
             "max_entry_tick": state.config.max_entry_tick
         }
     }
+
+
+# ==========================================
+# ENDPOINTS DE HISTÓRICO DE SESSÕES
+# ==========================================
+@app.get("/api/sessions")
+async def get_sessions():
+    sessions = state.session_manager.get_all_sessions()
+    return JSONResponse(content={
+        "sessions": sessions,
+        "current_session": {
+            "id": state.session_id,
+            "number": state.session_number,
+            "start_time": state.session_start_time.strftime("%d/%m/%Y %H:%M:%S"),
+            "total_trades": state.risk.total_trades,
+            "pnl": state.risk.daily_pnl
+        }
+    })
+
+
+@app.post("/api/session/new")
+async def new_session():
+    if state.in_trade:
+        return JSONResponse(status_code=400, content={
+            "status": "error",
+            "message": "Aguarde o contrato em andamento finalizar para iniciar uma nova sessão."
+        })
+    state.start_new_session(reason="Solicitado manualmente pelo usuário")
+    await state.notify_clients()
+    return {
+        "status": "success",
+        "message": f"Nova Sessão #{state.session_number} iniciada com sucesso!",
+        "session_number": state.session_number
+    }
+
+
+@app.delete("/api/sessions/{session_id}")
+async def delete_session(session_id: str):
+    success = state.session_manager.delete_session(session_id)
+    if success:
+        await state.notify_clients()
+        return {"status": "success", "message": "Sessão removida do histórico."}
+    return JSONResponse(status_code=404, content={"status": "error", "message": "Sessão não encontrada."})
+
+
+@app.delete("/api/sessions")
+async def clear_all_sessions():
+    state.session_manager.clear_all()
+    await state.notify_clients()
+    return {"status": "success", "message": "Todo o histórico de sessões foi limpo com sucesso."}
 
 
 @app.websocket("/ws")

@@ -67,6 +67,18 @@
         <span id="bot-status-text" class="truncate">Parado</span>
       </div>
 
+      <!-- Botão Histórico de Sessões -->
+      <button onclick="openSessionsModal()" title="Ver Histórico de Sessões Anteriores" class="px-3 py-1.5 rounded-lg font-semibold text-xs flex items-center justify-center gap-1.5 transition shadow bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-slate-600 text-slate-200">
+        <i data-lucide="archive" class="w-4 h-4 text-purple-400"></i>
+        <span>Sessões (<span id="sessions-count" class="font-mono text-purple-300">0</span>)</span>
+      </button>
+
+      <!-- Botão Nova Sessão -->
+      <button onclick="confirmStartNewSession()" title="Arquivar sessão atual e iniciar nova limpa" class="px-3 py-1.5 rounded-lg font-semibold text-xs flex items-center justify-center gap-1.5 transition shadow bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-slate-600 text-slate-200">
+        <i data-lucide="rotate-ccw" class="w-4 h-4 text-amber-400"></i>
+        <span>Nova Sessão</span>
+      </button>
+
       <!-- Botão Configurações -->
       <button onclick="openConfigModal()" title="Configurar Parâmetros de Estratégia e Risco" class="px-3 py-1.5 rounded-lg font-semibold text-xs flex items-center justify-center gap-1.5 transition shadow bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-slate-600 text-slate-200">
         <i data-lucide="sliders" class="w-4 h-4 text-cyan-400"></i>
@@ -118,7 +130,10 @@
       <!-- Vitórias vs Derrotas -->
       <div class="bg-slate-900/80 border border-slate-800/80 rounded-2xl p-5 shadow-lg">
         <div class="flex items-center justify-between text-slate-400 text-xs mb-2">
-          <span>PLACAR</span>
+          <span class="flex items-center gap-1.5">
+            PLACAR
+            <span id="active-session-badge" class="px-1.5 py-0.2 rounded text-[10px] font-bold bg-indigo-950/80 border border-indigo-500/40 text-indigo-300">Sessão #1</span>
+          </span>
           <i data-lucide="activity" class="w-4 h-4 text-indigo-400"></i>
         </div>
         <div class="flex items-baseline gap-2">
@@ -438,6 +453,14 @@
         <!-- Mensagem de Feedback -->
         <div id="cfg-feedback-msg" class="text-xs font-medium text-center hidden py-1"></div>
 
+        <!-- Opção de Iniciar Nova Sessão ao Salvar -->
+        <div class="bg-slate-950/60 border border-slate-800/80 rounded-lg p-3">
+          <label class="flex items-center gap-2.5 cursor-pointer text-xs text-slate-300 hover:text-white select-none">
+            <input type="checkbox" id="cfg-start-new-session" class="rounded bg-slate-900 border-slate-700 text-cyan-500 focus:ring-0 w-4 h-4 cursor-pointer" />
+            <span>Arquivar sessão atual e iniciar uma <strong>Nova Sessão limpa</strong> com estes ajustes</span>
+          </label>
+        </div>
+
         <!-- Ações do Modal -->
         <div class="pt-2 flex items-center justify-end gap-3">
           <button type="button" onclick="closeConfigModal()" class="px-4 py-2 rounded-lg text-xs font-semibold text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition">
@@ -450,6 +473,51 @@
         </div>
 
       </form>
+    </div>
+  </div>
+
+  <!-- Modal de Histórico de Sessões -->
+  <div id="modal-sessions" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm hidden p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-4xl shadow-2xl p-6 relative max-h-[90vh] flex flex-col">
+      
+      <!-- Cabeçalho do Modal -->
+      <div class="flex items-center justify-between pb-4 border-b border-slate-800 shrink-0">
+        <div class="flex items-center gap-3">
+          <div class="w-9 h-9 rounded-xl bg-purple-950/80 border border-purple-500/40 flex items-center justify-center text-purple-400">
+            <i data-lucide="archive" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h3 class="text-base font-bold text-slate-100 flex items-center gap-2">
+              Histórico de Sessões de Trading
+              <span id="sessions-modal-badge" class="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-950 border border-purple-500/40 text-purple-300">0 Sessões</span>
+            </h3>
+            <p class="text-xs text-slate-400">Consulte o desempenho, configurações e lista de trades de cada teste realizado</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <button onclick="confirmClearSessions()" title="Limpar Todo o Histórico" class="px-3 py-1.5 rounded-lg text-xs font-semibold text-rose-400 hover:bg-rose-950/50 hover:border-rose-500/40 border border-transparent transition flex items-center gap-1.5">
+            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+            <span>Limpar Histórico</span>
+          </button>
+          <button onclick="closeSessionsModal()" class="text-slate-400 hover:text-slate-200 transition p-1.5 rounded-lg hover:bg-slate-800">
+            <i data-lucide="x" class="w-5 h-5"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Lista de Sessões (Scrollable) -->
+      <div id="sessions-container" class="flex-1 overflow-y-auto py-4 space-y-4 pr-1">
+        <!-- Renderizado dinamicamente via JS -->
+      </div>
+
+      <!-- Rodapé do Modal -->
+      <div class="pt-3 border-t border-slate-800 flex items-center justify-between shrink-0 text-xs text-slate-400">
+        <span>💡 Cada sessão preserva seus parâmetros, assertividade, sequências de streaks e lista de contratos.</span>
+        <button onclick="closeSessionsModal()" class="px-4 py-2 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 transition">
+          Fechar
+        </button>
+      </div>
+
     </div>
   </div>
 
@@ -556,6 +624,16 @@
       document.getElementById("wins-count").innerText = `${data.wins || 0}W`;
       document.getElementById("losses-count").innerText = `${data.losses || 0}L`;
       document.getElementById("total-trades").innerText = `${data.total_trades || 0}`;
+
+      // Informações da Sessão Ativa e Histórico
+      if (data.archived_sessions_count !== undefined) {
+        const countEl = document.getElementById("sessions-count");
+        if (countEl) countEl.innerText = data.archived_sessions_count;
+      }
+      if (data.session_number !== undefined) {
+        const sBadge = document.getElementById("active-session-badge");
+        if (sBadge) sBadge.innerText = `Sessão #${data.session_number}`;
+      }
 
       // 5. Ativo Campeão
       document.getElementById("active-asset-name").innerText = data.active_asset_name || "Volatility 10";
@@ -737,6 +815,13 @@
         document.getElementById("cfg-wait-cycle").value = currentConfig.wait_cycle_reset !== false ? "true" : "false";
         document.getElementById("cfg-max-entry-tick").value = String(currentConfig.max_entry_tick || 1);
       }
+      
+      const totalTrades = parseInt(document.getElementById("total-trades").innerText) || 0;
+      const chkNew = document.getElementById("cfg-start-new-session");
+      if (chkNew) {
+        chkNew.checked = totalTrades > 0;
+      }
+
       hideFeedback();
       updateProfitEstimate();
       lucide.createIcons();
@@ -799,7 +884,8 @@
         daily_take_profit_usd: parseFloat(document.getElementById("cfg-take-profit").value),
         max_consecutive_losses: parseInt(document.getElementById("cfg-max-losses").value),
         wait_cycle_reset: document.getElementById("cfg-wait-cycle").value === "true",
-        max_entry_tick: parseInt(document.getElementById("cfg-max-entry-tick").value) || 1
+        max_entry_tick: parseInt(document.getElementById("cfg-max-entry-tick").value) || 1,
+        start_new_session: document.getElementById("cfg-start-new-session")?.checked || false
       };
 
       if (payload.exit_ticks < 2) {
@@ -846,13 +932,244 @@
       }
     }
 
+    // ==========================================
+    // FUNÇÕES DE HISTÓRICO DE SESSÕES
+    // ==========================================
+    async function openSessionsModal() {
+      const modal = document.getElementById("modal-sessions");
+      modal.classList.remove("hidden");
+      await loadAndRenderSessions();
+    }
+
+    function closeSessionsModal() {
+      const modal = document.getElementById("modal-sessions");
+      modal.classList.add("hidden");
+    }
+
+    async function loadAndRenderSessions() {
+      const container = document.getElementById("sessions-container");
+      container.innerHTML = '<div class="text-center py-8 text-slate-400"><i data-lucide="loader" class="w-6 h-6 animate-spin mx-auto mb-2 text-purple-400"></i>Carregando histórico...</div>';
+      lucide.createIcons();
+
+      try {
+        const res = await fetch("/api/sessions");
+        const data = await res.json();
+        const sessions = data.sessions || [];
+        
+        document.getElementById("sessions-modal-badge").innerText = `${sessions.length} ${sessions.length === 1 ? 'Sessão' : 'Sessões'}`;
+        document.getElementById("sessions-count").innerText = sessions.length;
+
+        if (sessions.length === 0) {
+          container.innerHTML = `
+            <div class="text-center py-12 px-4 space-y-3">
+              <div class="w-12 h-12 rounded-2xl bg-slate-800/80 border border-slate-700/80 flex items-center justify-center mx-auto text-slate-400">
+                <i data-lucide="history" class="w-6 h-6"></i>
+              </div>
+              <h4 class="text-sm font-semibold text-slate-200">Nenhuma sessão arquivada ainda</h4>
+              <p class="text-xs text-slate-400 max-w-sm mx-auto">
+                Quando você realizar testes e clicar em <strong>"Nova Sessão"</strong> ou alterar parâmetros, o histórico com configurações, métricas e contratos será arquivado aqui!
+              </p>
+            </div>
+          `;
+          lucide.createIcons();
+          return;
+        }
+
+        let html = '';
+        sessions.forEach(sess => {
+          const sum = sess.summary || {};
+          const cfg = sess.config || {};
+          const isWin = (sum.pnl || 0) >= 0;
+          const pnlColor = isWin ? 'text-emerald-400' : 'text-rose-400';
+          const pnlSign = isWin ? '+' : '';
+          const streaks = sum.streaks || {};
+          const lossStreaks = streaks.loss_streaks_list || [];
+          const winStreaks = streaks.win_streaks_list || [];
+          const tradesCount = (sess.trades || []).length;
+
+          html += `
+            <div class="bg-slate-950/80 border border-slate-800 rounded-xl p-4 space-y-3 hover:border-slate-700 transition">
+              <!-- Top Row: Identificação e PnL -->
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2.5">
+                  <span class="px-2 py-0.5 rounded text-xs font-bold bg-indigo-950 border border-indigo-500/50 text-indigo-300">
+                    Sessão #${sess.number}
+                  </span>
+                  <span class="text-xs text-slate-400 font-mono">
+                    ${sess.start_time || ''} • Duração: ${sess.duration || '0m'}
+                  </span>
+                </div>
+                <div class="flex items-center gap-3">
+                  <span class="text-lg font-extrabold font-mono ${pnlColor}">
+                    ${pnlSign}$${(sum.pnl || 0).toFixed(2)} USD
+                  </span>
+                  <button onclick="deleteSession('${sess.id}')" title="Excluir esta sessão" class="text-slate-500 hover:text-rose-400 p-1 rounded hover:bg-slate-800 transition">
+                    <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Middle Row: Resumo Operacional e Streaks -->
+              <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                <div class="bg-slate-900/90 rounded-lg p-2 border border-slate-800/80">
+                  <span class="text-slate-500 text-[10px] block">PLACAR / ASSERTIVIDADE</span>
+                  <span class="font-bold font-mono text-emerald-400">${sum.wins || 0}W</span>
+                  <span class="text-slate-600 font-mono">/</span>
+                  <span class="font-bold font-mono text-rose-400">${sum.losses || 0}L</span>
+                  <span class="text-slate-400 font-mono text-[11px] ml-1">(${sum.win_rate || 0}%)</span>
+                </div>
+
+                <div class="bg-slate-900/90 rounded-lg p-2 border border-slate-800/80">
+                  <span class="text-slate-500 text-[10px] block">RECORDE DE STREAKS</span>
+                  <span class="font-bold font-mono text-emerald-400">${sum.max_win_streak || 0}W</span>
+                  <span class="text-slate-600 font-mono">|</span>
+                  <span class="font-bold font-mono text-rose-400">${sum.max_loss_streak || 0}L</span>
+                </div>
+
+                <div class="bg-slate-900/90 rounded-lg p-2 border border-slate-800/80 col-span-2">
+                  <span class="text-slate-500 text-[10px] block">DISTRIBUIÇÃO DE STREAKS</span>
+                  <div class="flex flex-wrap gap-1 mt-1">
+                    ${lossStreaks.map(s => `<span class="px-1.5 py-0.2 rounded text-[10px] font-mono font-bold bg-rose-950/80 border border-rose-500/40 text-rose-300">${s.label}</span>`).join('')}
+                    ${winStreaks.map(s => `<span class="px-1.5 py-0.2 rounded text-[10px] font-mono font-bold bg-emerald-950/80 border border-emerald-500/40 text-emerald-300">${s.label}</span>`).join('')}
+                    ${(!lossStreaks.length && !winStreaks.length) ? '<span class="text-slate-600 text-[11px]">-</span>' : ''}
+                  </div>
+                </div>
+              </div>
+
+              <!-- Configurações Usadas -->
+              <div class="flex flex-wrap items-center gap-1.5 text-[11px] pt-1 border-t border-slate-800/60">
+                <span class="text-slate-500 font-medium mr-1">Config:</span>
+                <span class="px-2 py-0.5 rounded bg-slate-900 border border-slate-800 font-mono text-cyan-300">
+                  Taxa ${(cfg.growth_rate * 100 || 5).toFixed(0)}%
+                </span>
+                <span class="px-2 py-0.5 rounded bg-slate-900 border border-slate-800 font-mono text-slate-300">
+                  Stake $${(cfg.stake_amount || 1).toFixed(2)}
+                </span>
+                <span class="px-2 py-0.5 rounded bg-slate-900 border border-slate-800 font-mono text-amber-300">
+                  Saída ${cfg.exit_ticks || 6} Ticks
+                </span>
+                <span class="px-2 py-0.5 rounded bg-slate-900 border border-slate-800 font-mono text-emerald-300">
+                  Parede: ${cfg.wait_cycle_reset ? 'Reset Oficial' : 'Imediato'}
+                </span>
+                <span class="px-2 py-0.5 rounded bg-slate-900 border border-slate-800 font-mono text-slate-400">
+                  SL -$${(cfg.daily_stop_loss_usd || 20).toFixed(2)} / TP +$${(cfg.daily_take_profit_usd || 20).toFixed(2)}
+                </span>
+              </div>
+
+              <!-- Acordeão de Contratos -->
+              <div class="pt-1">
+                <button onclick="toggleSessionTrades('${sess.id}')" class="text-xs font-semibold text-indigo-400 hover:text-indigo-300 flex items-center gap-1 transition">
+                  <i data-lucide="chevron-right" id="icon-toggle-${sess.id}" class="w-3.5 h-3.5 transition-transform duration-200"></i>
+                  <span>Ver Detalhes dos ${tradesCount} Contratos desta Sessão</span>
+                </button>
+                <div id="trades-container-${sess.id}" class="hidden mt-2 pt-2 border-t border-slate-900 overflow-x-auto">
+                  <table class="w-full text-left text-[11px]">
+                    <thead class="text-slate-500 uppercase border-b border-slate-800/80">
+                      <tr>
+                        <th class="py-1 px-2">Hora</th>
+                        <th class="py-1 px-2">Ativo</th>
+                        <th class="py-1 px-2">Stake</th>
+                        <th class="py-1 px-2">Resultado</th>
+                        <th class="py-1 px-2 text-right">Lucro</th>
+                      </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-900 font-mono">
+                      ${(sess.trades || []).map(t => `
+                        <tr class="hover:bg-slate-900/40">
+                          <td class="py-1 px-2 text-slate-400">${t.time}</td>
+                          <td class="py-1 px-2 font-medium text-slate-300">${t.symbol}</td>
+                          <td class="py-1 px-2 text-slate-400">$${Number(t.stake).toFixed(2)}</td>
+                          <td class="py-1 px-2 font-bold ${t.result === 'VITÓRIA' || t.profit > 0 ? 'text-emerald-400' : 'text-rose-400'}">${t.result || (t.profit > 0 ? 'VITÓRIA' : 'DERROTA')}</td>
+                          <td class="py-1 px-2 text-right font-bold ${t.profit >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${t.profit >= 0 ? '+' : ''}$${Number(t.profit).toFixed(2)}</td>
+                        </tr>
+                      `).join('')}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+            </div>
+          `;
+        });
+
+        container.innerHTML = html;
+        lucide.createIcons();
+      } catch (err) {
+        container.innerHTML = `<div class="text-center py-8 text-rose-400 text-xs">Erro ao carregar sessões: ${err}</div>`;
+      }
+    }
+
+    function toggleSessionTrades(sessionId) {
+      const container = document.getElementById(`trades-container-${sessionId}`);
+      const icon = document.getElementById(`icon-toggle-${sessionId}`);
+      if (!container) return;
+      if (container.classList.contains("hidden")) {
+        container.classList.remove("hidden");
+        if (icon) icon.classList.add("rotate-90");
+      } else {
+        container.classList.add("hidden");
+        if (icon) icon.classList.remove("rotate-90");
+      }
+    }
+
+    async function confirmStartNewSession() {
+      if (confirm("Deseja finalizar a sessão atual e iniciar uma Nova Sessão limpa?\n\nO teste atual será arquivado no Histórico de Sessões com todas as estatísticas, configurações e contratos para consulta posterior.")) {
+        try {
+          const res = await fetch("/api/session/new", { method: "POST" });
+          const data = await res.json();
+          if (res.ok && data.status === "success") {
+            logTerminal(data.message, "emerald");
+          } else {
+            alert(data.message || "Erro ao iniciar nova sessão.");
+          }
+        } catch (e) {
+          alert("Falha na comunicação: " + e);
+        }
+      }
+    }
+
+    async function deleteSession(sessionId) {
+      if (confirm("Deseja realmente remover esta sessão do histórico?")) {
+        try {
+          const res = await fetch(`/api/sessions/${sessionId}`, { method: "DELETE" });
+          if (res.ok) {
+            await loadAndRenderSessions();
+          }
+        } catch (e) {
+          alert("Erro ao excluir sessão: " + e);
+        }
+      }
+    }
+
+    async function confirmClearSessions() {
+      if (confirm("Tem certeza que deseja apagar TODO o histórico de sessões arquivadas?")) {
+        try {
+          const res = await fetch("/api/sessions", { method: "DELETE" });
+          if (res.ok) {
+            await loadAndRenderSessions();
+          }
+        } catch (e) {
+          alert("Erro ao limpar histórico: " + e);
+        }
+      }
+    }
+
     // Fechar ao clicar no backdrop escuro
     document.addEventListener("DOMContentLoaded", () => {
-      const modal = document.getElementById("modal-config");
-      if (modal) {
-        modal.addEventListener("click", (e) => {
+      const modalCfg = document.getElementById("modal-config");
+      if (modalCfg) {
+        modalCfg.addEventListener("click", (e) => {
           if (e.target.id === "modal-config") {
             closeConfigModal();
+          }
+        });
+      }
+
+      const modalSess = document.getElementById("modal-sessions");
+      if (modalSess) {
+        modalSess.addEventListener("click", (e) => {
+          if (e.target.id === "modal-sessions") {
+            closeSessionsModal();
           }
         });
       }
