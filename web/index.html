@@ -426,6 +426,14 @@
     let ws = null;
     let currentConfig = null;
 
+    // Rastreamento de estado para evitar re-renderizações desnecessárias do DOM
+    let lastIsRunning = null;
+    let lastInTrade = null;
+    let lastContractId = null;
+    let lastTradesSignature = "";
+    let lastLossStreaksSignature = "";
+    let lastWinStreaksSignature = "";
+
     function initWebSocket() {
       const loc = window.location;
       const wsUri = (loc.protocol === "https:" ? "wss://" : "ws://") + loc.host + "/ws";
@@ -449,25 +457,31 @@
     function updateDashboard(data) {
       if (!data) return;
 
-      // Status e Botão
-      isBotRunning = data.is_running;
-      const dot = document.getElementById("bot-status-dot");
-      const text = document.getElementById("bot-status-text");
-      const btn = document.getElementById("btn-toggle");
+      let needIconsUpdate = false;
 
-      if (data.is_running) {
-        dot.className = "w-2 h-2 rounded-full bg-emerald-400 animate-pulse";
-        text.innerText = "Ativo";
-        btn.className = "w-32 py-1.5 rounded-lg font-semibold text-xs flex items-center justify-center gap-2 transition shadow-lg bg-rose-600 hover:bg-rose-500 text-white";
-        btn.innerHTML = '<i data-lucide="square" class="w-4 h-4"></i><span>Pausar</span>';
-      } else {
-        dot.className = "w-2 h-2 rounded-full bg-slate-500";
-        text.innerText = "Parado";
-        btn.className = "w-32 py-1.5 rounded-lg font-semibold text-xs flex items-center justify-center gap-2 transition shadow-lg bg-emerald-600 hover:bg-emerald-500 text-white";
-        btn.innerHTML = '<i data-lucide="play" class="w-4 h-4"></i><span>Iniciar</span>';
+      // 1. Status e Botão (Atualiza DOM somente se o estado do bot mudou)
+      if (data.is_running !== lastIsRunning) {
+        lastIsRunning = data.is_running;
+        isBotRunning = data.is_running;
+        const dot = document.getElementById("bot-status-dot");
+        const text = document.getElementById("bot-status-text");
+        const btn = document.getElementById("btn-toggle");
+
+        if (data.is_running) {
+          dot.className = "w-2 h-2 rounded-full bg-emerald-400 animate-pulse";
+          text.innerText = "Ativo";
+          btn.className = "w-32 py-1.5 rounded-lg font-semibold text-xs flex items-center justify-center gap-2 transition shadow-lg bg-rose-600 hover:bg-rose-500 text-white";
+          btn.innerHTML = '<i data-lucide="square" class="w-4 h-4"></i><span>Pausar</span>';
+        } else {
+          dot.className = "w-2 h-2 rounded-full bg-slate-500";
+          text.innerText = "Parado";
+          btn.className = "w-32 py-1.5 rounded-lg font-semibold text-xs flex items-center justify-center gap-2 transition shadow-lg bg-emerald-600 hover:bg-emerald-500 text-white";
+          btn.innerHTML = '<i data-lucide="play" class="w-4 h-4"></i><span>Iniciar</span>';
+        }
+        needIconsUpdate = true;
       }
 
-      // Saldo da Conta em Tempo Real (Direto da Deriv)
+      // 2. Saldo da Conta em Tempo Real
       if (data.account_balance !== undefined) {
         document.getElementById("account-balance").innerText = `$${parseFloat(data.account_balance).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`;
       }
@@ -494,17 +508,16 @@
         }
       }
 
-      // PnL
+      // 3. PnL e Metas
       const pnl = data.daily_pnl || 0.0;
       const pnlEl = document.getElementById("pnl-value");
       pnlEl.innerText = `${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`;
       pnlEl.className = `text-3xl font-extrabold tracking-tight font-mono ${pnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}`;
 
-      // Metas
       document.getElementById("tp-target").innerText = `+$${data.tp_target?.toFixed(2) || '2.00'}`;
       document.getElementById("sl-target").innerText = `-$${data.sl_target?.toFixed(2) || '2.00'}`;
 
-      // Assertividade e Placar
+      // 4. Assertividade e Placar
       const winRate = data.win_rate || 0.0;
       document.getElementById("win-rate").innerText = `${winRate.toFixed(1)}%`;
       document.getElementById("win-rate-bar").style.width = `${Math.min(winRate, 100)}%`;
@@ -512,7 +525,7 @@
       document.getElementById("losses-count").innerText = `${data.losses || 0}L`;
       document.getElementById("total-trades").innerText = `${data.total_trades || 0}`;
 
-      // Ativo Campeão
+      // 5. Ativo Campeão
       document.getElementById("active-asset-name").innerText = data.active_asset_name || "Volatility 10";
       document.getElementById("active-asset-rate").innerText = `${data.active_asset_rate?.toFixed(1) || '95.0'}%`;
       const lblSurvival = document.getElementById("lbl-survival-ticks");
@@ -520,7 +533,7 @@
         lblSurvival.innerText = `Sobrevivência ${data.exit_ticks || 6}T:`;
       }
 
-      // Monitor de Trade Estático (Sem Layout Shift)
+      // 6. Monitor de Trade Estático (Não recria HTML a cada tick, apenas atualiza valores)
       const indicator = document.getElementById("trade-indicator");
       const label = document.getElementById("trade-label");
       const assetInfo = document.getElementById("trade-asset-info");
@@ -528,31 +541,41 @@
       const ticksDisplay = document.getElementById("live-ticks-display");
       const profitDisplay = document.getElementById("live-profit-display");
 
+      if (data.in_trade !== lastInTrade || data.current_contract_id !== lastContractId) {
+        lastInTrade = data.in_trade;
+        lastContractId = data.current_contract_id;
+
+        if (data.in_trade) {
+          indicator.className = "w-10 h-10 rounded-xl bg-emerald-950 border border-emerald-500/40 flex items-center justify-center text-emerald-400";
+          indicator.innerHTML = '<i data-lucide="zap" class="w-5 h-5 animate-bounce"></i>';
+          label.innerText = "Operação em Andamento";
+          label.className = "text-xs font-semibold uppercase tracking-wider text-emerald-400";
+          contractId.innerText = `(#${data.current_contract_id})`;
+          assetInfo.innerText = `${data.active_asset_name} • Saída no ${data.exit_ticks || 6}º tick`;
+        } else {
+          indicator.className = "w-10 h-10 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-400";
+          indicator.innerHTML = '<i data-lucide="clock" class="w-5 h-5"></i>';
+          label.innerText = data.is_running ? "Monitorando Mercado" : "Robô Pausado";
+          label.className = "text-xs font-semibold uppercase tracking-wider text-slate-400";
+          contractId.innerText = "";
+          assetInfo.innerText = data.is_running ? `Aguardando próximo ciclo em ${data.active_asset_name}` : "Clique em Iniciar para começar";
+        }
+        needIconsUpdate = true;
+      }
+
+      // Atualiza estritamente os textos numéricos de ticks e lucro sem alterar a árvore do DOM
       if (data.in_trade) {
-        indicator.className = "w-10 h-10 rounded-xl bg-emerald-950 border border-emerald-500/40 flex items-center justify-center text-emerald-400";
-        indicator.innerHTML = '<i data-lucide="zap" class="w-5 h-5 animate-bounce"></i>';
-        label.innerText = "Operação em Andamento";
-        label.className = "text-xs font-semibold uppercase tracking-wider text-emerald-400";
-        contractId.innerText = `(#${data.current_contract_id})`;
-        assetInfo.innerText = `${data.active_asset_name} • Saída no ${data.exit_ticks || 6}º tick`;
         ticksDisplay.innerText = `${data.current_ticks || 0} / ${data.exit_ticks || 6}`;
-        
         const curProfit = data.current_profit || 0.0;
         profitDisplay.innerText = `${curProfit >= 0 ? '+' : ''}$${curProfit.toFixed(2)}`;
         profitDisplay.className = `text-lg font-extrabold font-mono ${curProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`;
       } else {
-        indicator.className = "w-10 h-10 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-400";
-        indicator.innerHTML = '<i data-lucide="clock" class="w-5 h-5"></i>';
-        label.innerText = data.is_running ? "Monitorando Mercado" : "Robô Pausado";
-        label.className = "text-xs font-semibold uppercase tracking-wider text-slate-400";
-        contractId.innerText = "";
-        assetInfo.innerText = data.is_running ? `Aguardando próximo ciclo em ${data.active_asset_name}` : "Clique em Iniciar para começar";
         ticksDisplay.innerText = `0 / ${data.exit_ticks || 6}`;
         profitDisplay.innerText = "$0.00";
         profitDisplay.className = "text-lg font-extrabold font-mono text-slate-500";
       }
 
-      // Atualização das Streaks e Frequências
+      // 7. Atualização das Streaks e Frequências (Apenas se houver alteração)
       if (data.streaks) {
         const s = data.streaks;
         
@@ -569,55 +592,68 @@
           curBadge.innerText = "0";
         }
 
-        // Recordes
         document.getElementById("streak-max-win").innerText = `${s.max_win_streak || 0}W`;
         document.getElementById("streak-max-loss").innerText = `${s.max_loss_streak || 0}L`;
 
-        // Container de Derrotas
-        const lossCont = document.getElementById("loss-streaks-container");
-        if (s.loss_streaks_list && s.loss_streaks_list.length > 0) {
-          lossCont.innerHTML = s.loss_streaks_list.map(item => `
-            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-mono font-bold bg-rose-950/70 border border-rose-600/40 text-rose-300 shadow-sm shadow-rose-950/50">
-              <span>${item.streak}L</span>
-              <span class="px-1.5 py-0.5 rounded bg-rose-900/60 text-rose-200 text-[11px] font-semibold">${item.count}x</span>
-            </span>
-          `).join('');
-        } else {
-          lossCont.innerHTML = '<span class="text-xs text-slate-600 italic">Nenhuma sequência de derrota registrada.</span>';
+        // Renderiza apenas se a lista de derrotas mudou
+        const lossSig = JSON.stringify(s.loss_streaks_list || []);
+        if (lossSig !== lastLossStreaksSignature) {
+          lastLossStreaksSignature = lossSig;
+          const lossCont = document.getElementById("loss-streaks-container");
+          if (s.loss_streaks_list && s.loss_streaks_list.length > 0) {
+            lossCont.innerHTML = s.loss_streaks_list.map(item => `
+              <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-mono font-bold bg-rose-950/70 border border-rose-600/40 text-rose-300 shadow-sm shadow-rose-950/50">
+                <span>${item.streak}L</span>
+                <span class="px-1.5 py-0.5 rounded bg-rose-900/60 text-rose-200 text-[11px] font-semibold">${item.count}x</span>
+              </span>
+            `).join('');
+          } else {
+            lossCont.innerHTML = '<span class="text-xs text-slate-600 italic">Nenhuma sequência de derrota registrada.</span>';
+          }
         }
 
-        // Container de Vitórias
-        const winCont = document.getElementById("win-streaks-container");
-        if (s.win_streaks_list && s.win_streaks_list.length > 0) {
-          winCont.innerHTML = s.win_streaks_list.map(item => `
-            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-mono font-bold bg-emerald-950/70 border border-emerald-600/40 text-emerald-300 shadow-sm shadow-emerald-950/50">
-              <span>${item.streak}W</span>
-              <span class="px-1.5 py-0.5 rounded bg-emerald-900/60 text-emerald-200 text-[11px] font-semibold">${item.count}x</span>
-            </span>
-          `).join('');
-        } else {
-          winCont.innerHTML = '<span class="text-xs text-slate-600 italic">Nenhuma sequência de vitória registrada.</span>';
+        // Renderiza apenas se a lista de vitórias mudou
+        const winSig = JSON.stringify(s.win_streaks_list || []);
+        if (winSig !== lastWinStreaksSignature) {
+          lastWinStreaksSignature = winSig;
+          const winCont = document.getElementById("win-streaks-container");
+          if (s.win_streaks_list && s.win_streaks_list.length > 0) {
+            winCont.innerHTML = s.win_streaks_list.map(item => `
+              <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-mono font-bold bg-emerald-950/70 border border-emerald-600/40 text-emerald-300 shadow-sm shadow-emerald-950/50">
+                <span>${item.streak}W</span>
+                <span class="px-1.5 py-0.5 rounded bg-emerald-900/60 text-emerald-200 text-[11px] font-semibold">${item.count}x</span>
+              </span>
+            `).join('');
+          } else {
+            winCont.innerHTML = '<span class="text-xs text-slate-600 italic">Nenhuma sequência de vitória registrada.</span>';
+          }
         }
       }
 
-      // Histórico de Trades
-      if (data.recent_trades && data.recent_trades.length > 0) {
+      // 8. Histórico de Trades (Renderiza o DOM SOMENTE quando um novo trade é adicionado!)
+      const tradesSig = JSON.stringify(data.recent_trades || []);
+      if (tradesSig !== lastTradesSignature) {
+        lastTradesSignature = tradesSig;
         const tbody = document.getElementById("trades-table-body");
-        tbody.innerHTML = data.recent_trades.map(t => `
-          <tr class="hover:bg-slate-800/40 transition">
-            <td class="py-2 text-slate-400">${t.time}</td>
-            <td class="py-2 text-slate-200 font-semibold">${t.symbol}</td>
-            <td class="py-2 text-slate-400">$${t.stake.toFixed(2)}</td>
-            <td class="py-2">
-              <span class="px-2 py-0.5 rounded text-[10px] font-bold ${t.profit > 0 ? 'bg-emerald-950 text-emerald-400 border border-emerald-500/30' : 'bg-rose-950 text-rose-400 border border-rose-500/30'}">
-                ${t.profit > 0 ? 'VITÓRIA' : 'DERROTA'}
-              </span>
-            </td>
-            <td class="py-2 text-right font-bold ${t.profit > 0 ? 'text-emerald-400' : 'text-rose-400'}">
-              ${t.profit > 0 ? '+' : ''}$${t.profit.toFixed(2)}
-            </td>
-          </tr>
-        `).join('');
+        if (data.recent_trades && data.recent_trades.length > 0) {
+          tbody.innerHTML = data.recent_trades.map(t => `
+            <tr class="hover:bg-slate-800/40 transition">
+              <td class="py-2 text-slate-400">${t.time}</td>
+              <td class="py-2 text-slate-200 font-semibold">${t.symbol}</td>
+              <td class="py-2 text-slate-400">$${t.stake.toFixed(2)}</td>
+              <td class="py-2">
+                <span class="px-2 py-0.5 rounded text-[10px] font-bold ${t.profit > 0 ? 'bg-emerald-950 text-emerald-400 border border-emerald-500/30' : 'bg-rose-950 text-rose-400 border border-rose-500/30'}">
+                  ${t.profit > 0 ? 'VITÓRIA' : 'DERROTA'}
+                </span>
+              </td>
+              <td class="py-2 text-right font-bold ${t.profit > 0 ? 'text-emerald-400' : 'text-rose-400'}">
+                ${t.profit > 0 ? '+' : ''}$${t.profit.toFixed(2)}
+              </td>
+            </tr>
+          `).join('');
+        } else {
+          tbody.innerHTML = '';
+        }
       }
 
       if (data.growth_rate !== undefined) {
@@ -635,7 +671,10 @@
         logTerminal(data.latest_log);
       }
 
-      lucide.createIcons();
+      // Executa Lucide apenas se novos elementos com data-lucide foram inseridos
+      if (needIconsUpdate) {
+        lucide.createIcons();
+      }
     }
 
     // Modal de Configurações
