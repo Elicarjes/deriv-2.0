@@ -16,6 +16,7 @@ import urllib.request
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse
+from pydantic import BaseModel
 import uvicorn
 import websockets
 
@@ -78,6 +79,11 @@ class DashboardState:
             "rate_limit_status": self.rate_limit_status,
             "is_rate_limited": self.is_rate_limited,
             "account_limits": self.account_limits,
+            "growth_rate": self.config.growth_rate,
+            "stake_amount": self.config.stake_amount,
+            "daily_stop_loss_usd": self.config.daily_stop_loss_usd,
+            "daily_take_profit_usd": self.config.daily_take_profit_usd,
+            "max_consecutive_losses": self.config.max_consecutive_losses,
             "daily_pnl": self.risk.daily_pnl,
             "tp_target": self.config.daily_take_profit_usd,
             "sl_target": self.config.daily_stop_loss_usd,
@@ -466,6 +472,107 @@ async def stop_bot():
         state.bot_task.cancel()
     await state.notify_clients()
     return {"status": "stopped", "message": "Robô pausado com sucesso!"}
+
+
+def persist_env_config(updates: Dict[str, Any]):
+    """Atualiza as chaves selecionadas no arquivo .env preservando comentários e outras variáveis."""
+    try:
+        env_path = BASE_DIR / ".env"
+        if not env_path.exists():
+            return
+        lines = env_path.read_text(encoding="utf-8").splitlines()
+        new_lines = []
+        keys_updated = set()
+        for line in lines:
+            stripped = line.strip()
+            if stripped and not stripped.startswith("#") and "=" in stripped:
+                k, _ = stripped.split("=", 1)
+                k = k.strip()
+                if k in updates:
+                    new_lines.append(f"{k}={updates[k]}")
+                    keys_updated.add(k)
+                    continue
+            new_lines.append(line)
+        for k, v in updates.items():
+            if k not in keys_updated:
+                new_lines.append(f"{k}={v}")
+        env_path.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
+        logger.info("💾 Arquivo .env atualizado com as novas configurações.")
+    except Exception as e:
+        logger.error(f"Erro ao persistir .env: {e}")
+
+
+class ConfigUpdateRequest(BaseModel):
+    growth_rate: float
+    stake_amount: float
+    exit_ticks: int
+    daily_stop_loss_usd: float
+    daily_take_profit_usd: float
+    max_consecutive_losses: int
+
+
+@app.get("/api/config")
+async def get_config():
+    return {
+        "growth_rate": state.config.growth_rate,
+        "stake_amount": state.config.stake_amount,
+        "exit_ticks": state.config.exit_ticks,
+        "daily_stop_loss_usd": state.config.daily_stop_loss_usd,
+        "daily_take_profit_usd": state.config.daily_take_profit_usd,
+        "max_consecutive_losses": state.config.max_consecutive_losses
+    }
+
+
+@app.post("/api/config")
+async def update_config(cfg_in: ConfigUpdateRequest):
+    if cfg_in.stake_amount <= 0:
+        return JSONResponse(status_code=400, content={"status": "error", "message": "O valor da Stake deve ser maior que zero."})
+    if cfg_in.exit_ticks < 1:
+        return JSONResponse(status_code=400, content={"status": "error", "message": "Exit Ticks deve ser pelo menos 1."})
+
+    state.config.growth_rate = round(float(cfg_in.growth_rate), 4)
+    state.config.stake_amount = round(float(cfg_in.stake_amount), 2)
+    state.config.exit_ticks = int(cfg_in.exit_ticks)
+    state.config.daily_stop_loss_usd = round(abs(float(cfg_in.daily_stop_loss_usd)), 2)
+    state.config.daily_take_profit_usd = round(abs(float(cfg_in.daily_take_profit_usd)), 2)
+    state.config.max_consecutive_losses = int(cfg_in.max_consecutive_losses)
+
+    # Reavalia o RiskManager se estava bloqueado por meta anterior
+    if state.risk.is_stopped:
+        if (state.risk.daily_pnl > -abs(state.config.daily_stop_loss_usd) and
+            state.risk.daily_pnl < abs(state.config.daily_take_profit_usd) and
+            state.risk.current_loss_streak < state.config.max_consecutive_losses):
+            state.risk.is_stopped = False
+            state.risk.stop_reason = ""
+            state.status_message = "Parado" if not state.is_running else "Ativo"
+
+    # Persiste no .env para reter entre reinicializações
+    persist_env_config({
+        "GROWTH_RATE": f"{state.config.growth_rate:.2f}",
+        "STAKE_AMOUNT": f"{state.config.stake_amount:.2f}",
+        "EXIT_TICKS": str(state.config.exit_ticks),
+        "DAILY_STOP_LOSS_USD": f"{state.config.daily_stop_loss_usd:.2f}",
+        "DAILY_TAKE_PROFIT_USD": f"{state.config.daily_take_profit_usd:.2f}",
+        "MAX_CONSECUTIVE_LOSSES": str(state.config.max_consecutive_losses)
+    })
+
+    log_msg = f"⚙️ Configurações salvas: Stake ${state.config.stake_amount:.2f} | Growth {state.config.growth_rate*100:.0f}% | Saída {state.config.exit_ticks}T | TP ${state.config.daily_take_profit_usd:.2f} | SL ${state.config.daily_stop_loss_usd:.2f} | Max Loss {state.config.max_consecutive_losses}"
+    state.latest_log = log_msg
+    logger.info(log_msg)
+    await state.notify_clients()
+
+    return {
+        "status": "success",
+        "message": "Configurações salvas e aplicadas com sucesso!",
+        "config": {
+            "growth_rate": state.config.growth_rate,
+            "stake_amount": state.config.stake_amount,
+            "exit_ticks": state.config.exit_ticks,
+            "daily_stop_loss_usd": state.config.daily_stop_loss_usd,
+            "daily_take_profit_usd": state.config.daily_take_profit_usd,
+            "max_consecutive_losses": state.config.max_consecutive_losses
+        }
+    }
 
 
 @app.websocket("/ws")

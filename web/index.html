@@ -67,6 +67,12 @@
         <span id="bot-status-text" class="truncate">Parado</span>
       </div>
 
+      <!-- Botão Configurações -->
+      <button onclick="openConfigModal()" title="Configurar Parâmetros de Estratégia e Risco" class="px-3 py-1.5 rounded-lg font-semibold text-xs flex items-center justify-center gap-1.5 transition shadow bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-slate-600 text-slate-200">
+        <i data-lucide="sliders" class="w-4 h-4 text-cyan-400"></i>
+        <span>Config</span>
+      </button>
+
       <!-- Botão Iniciar / Pausar com Largura Fixa -->
       <button id="btn-toggle" onclick="toggleBot()" class="w-32 py-1.5 rounded-lg font-semibold text-xs flex items-center justify-center gap-2 transition shadow-lg bg-emerald-600 hover:bg-emerald-500 text-white">
         <i data-lucide="play" class="w-4 h-4"></i>
@@ -292,9 +298,133 @@
     Deriv Quant 2.0 • WebSocket Event-Driven • Sem Polling
   </footer>
 
+  <!-- Modal de Configurações -->
+  <div id="modal-config" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden transition-all transform duration-150">
+      
+      <!-- Cabeçalho do Modal -->
+      <div class="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/60">
+        <div class="flex items-center gap-2.5">
+          <div class="w-8 h-8 rounded-lg bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400">
+            <i data-lucide="sliders" class="w-4 h-4"></i>
+          </div>
+          <div>
+            <h3 class="text-sm font-bold text-slate-100">Parâmetros da Estratégia & Risco</h3>
+            <p class="text-[11px] text-slate-400">Ajuste e salve parâmetros em tempo real</p>
+          </div>
+        </div>
+        <button onclick="closeConfigModal()" class="text-slate-400 hover:text-slate-200 p-1.5 rounded-lg hover:bg-slate-800 transition">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <!-- Formulário de Configurações -->
+      <form id="form-config" onsubmit="handleSaveConfig(event)" class="p-6 space-y-5">
+        
+        <!-- Bloco 1: Estratégia do Acumulador (ACCU) -->
+        <div class="space-y-3">
+          <div class="text-xs font-bold text-cyan-400 flex items-center gap-1.5 uppercase tracking-wider">
+            <i data-lucide="zap" class="w-3.5 h-3.5"></i>
+            Estratégia do Acumulador (ACCU)
+          </div>
+          
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <!-- Taxa de Crescimento (Growth Rate) -->
+            <div>
+              <label class="block text-[11px] text-slate-400 mb-1 font-medium">Crescimento / Tick</label>
+              <select id="cfg-growth-rate" onchange="updateProfitEstimate()" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs font-mono font-semibold text-slate-200 focus:outline-none focus:border-cyan-500 cursor-pointer">
+                <option value="0.01">1% ao tick</option>
+                <option value="0.02">2% ao tick</option>
+                <option value="0.03">3% ao tick</option>
+                <option value="0.04">4% ao tick</option>
+                <option value="0.05">5% ao tick (Máx)</option>
+              </select>
+            </div>
+
+            <!-- Stake Amount (USD) -->
+            <div>
+              <label class="block text-[11px] text-slate-400 mb-1 font-medium">Stake (USD)</label>
+              <div class="relative">
+                <span class="absolute left-2.5 top-2 text-xs text-slate-500 font-mono">$</span>
+                <input type="number" id="cfg-stake-amount" oninput="updateProfitEstimate()" step="0.10" min="0.35" class="w-full bg-slate-950 border border-slate-800 rounded-lg pl-6 pr-3 py-2 text-xs font-mono font-semibold text-slate-200 focus:outline-none focus:border-cyan-500" required />
+              </div>
+            </div>
+
+            <!-- Exit Ticks (Alvo) -->
+            <div>
+              <label class="block text-[11px] text-slate-400 mb-1 font-medium">Saída (Ticks)</label>
+              <input type="number" id="cfg-exit-ticks" oninput="updateProfitEstimate()" step="1" min="1" max="100" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs font-mono font-semibold text-slate-200 focus:outline-none focus:border-cyan-500" required />
+            </div>
+          </div>
+
+          <!-- Estimativa de Retorno por Operação Vitoriosa -->
+          <div class="bg-slate-950/70 border border-slate-800 rounded-lg p-2.5 flex items-center justify-between text-xs font-mono">
+            <span class="text-slate-400 flex items-center gap-1.5">
+              <i data-lucide="calculator" class="w-3.5 h-3.5 text-cyan-400"></i>
+              Lucro Estimado por Vitória:
+            </span>
+            <span id="cfg-profit-estimate" class="font-bold text-emerald-400">+$0.00</span>
+          </div>
+        </div>
+
+        <hr class="border-slate-800/80" />
+
+        <!-- Bloco 2: Gestão de Risco Diária (Hard Stops) -->
+        <div class="space-y-3">
+          <div class="text-xs font-bold text-amber-400 flex items-center gap-1.5 uppercase tracking-wider">
+            <i data-lucide="shield-alert" class="w-3.5 h-3.5"></i>
+            Gestão de Risco Diária (Travas Rígidas)
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <!-- Stop Loss Diário -->
+            <div>
+              <label class="block text-[11px] text-slate-400 mb-1 font-medium">Stop Loss Diário</label>
+              <div class="relative">
+                <span class="absolute left-2.5 top-2 text-xs text-rose-400 font-mono">-$</span>
+                <input type="number" id="cfg-stop-loss" step="0.50" min="1.00" class="w-full bg-slate-950 border border-slate-800 rounded-lg pl-7 pr-3 py-2 text-xs font-mono font-semibold text-rose-400 focus:outline-none focus:border-rose-500" required />
+              </div>
+            </div>
+
+            <!-- Take Profit Diário -->
+            <div>
+              <label class="block text-[11px] text-slate-400 mb-1 font-medium">Meta Diária (TP)</label>
+              <div class="relative">
+                <span class="absolute left-2.5 top-2 text-xs text-emerald-400 font-mono">+$</span>
+                <input type="number" id="cfg-take-profit" step="0.50" min="1.00" class="w-full bg-slate-950 border border-slate-800 rounded-lg pl-7 pr-3 py-2 text-xs font-mono font-semibold text-emerald-400 focus:outline-none focus:border-emerald-500" required />
+              </div>
+            </div>
+
+            <!-- Perdas Consecutivas Máximas -->
+            <div>
+              <label class="block text-[11px] text-slate-400 mb-1 font-medium">Max Derrotas Consec.</label>
+              <input type="number" id="cfg-max-losses" step="1" min="1" max="50" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs font-mono font-semibold text-slate-200 focus:outline-none focus:border-amber-500" required />
+            </div>
+          </div>
+        </div>
+
+        <!-- Mensagem de Feedback -->
+        <div id="cfg-feedback-msg" class="text-xs font-medium text-center hidden py-1"></div>
+
+        <!-- Ações do Modal -->
+        <div class="pt-2 flex items-center justify-end gap-3">
+          <button type="button" onclick="closeConfigModal()" class="px-4 py-2 rounded-lg text-xs font-semibold text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition">
+            Cancelar
+          </button>
+          <button type="submit" id="btn-save-cfg" class="px-5 py-2 rounded-lg text-xs font-semibold bg-cyan-600 hover:bg-cyan-500 text-white flex items-center gap-2 shadow-lg shadow-cyan-600/20 transition">
+            <i data-lucide="check" class="w-4 h-4"></i>
+            <span>Salvar Configurações</span>
+          </button>
+        </div>
+
+      </form>
+    </div>
+  </div>
+
   <script>
     let isBotRunning = false;
     let ws = null;
+    let currentConfig = null;
 
     function initWebSocket() {
       const loc = window.location;
@@ -490,12 +620,135 @@
         `).join('');
       }
 
+      if (data.growth_rate !== undefined) {
+        currentConfig = {
+          growth_rate: data.growth_rate,
+          stake_amount: data.stake_amount,
+          exit_ticks: data.exit_ticks,
+          daily_stop_loss_usd: data.daily_stop_loss_usd,
+          daily_take_profit_usd: data.daily_take_profit_usd,
+          max_consecutive_losses: data.max_consecutive_losses
+        };
+      }
+
       if (data.latest_log) {
         logTerminal(data.latest_log);
       }
 
       lucide.createIcons();
     }
+
+    // Modal de Configurações
+    function openConfigModal() {
+      const modal = document.getElementById("modal-config");
+      modal.classList.remove("hidden");
+
+      if (currentConfig) {
+        document.getElementById("cfg-growth-rate").value = String(currentConfig.growth_rate);
+        document.getElementById("cfg-stake-amount").value = currentConfig.stake_amount.toFixed(2);
+        document.getElementById("cfg-exit-ticks").value = currentConfig.exit_ticks;
+        document.getElementById("cfg-stop-loss").value = currentConfig.daily_stop_loss_usd.toFixed(2);
+        document.getElementById("cfg-take-profit").value = currentConfig.daily_take_profit_usd.toFixed(2);
+        document.getElementById("cfg-max-losses").value = currentConfig.max_consecutive_losses;
+      }
+      hideFeedback();
+      updateProfitEstimate();
+      lucide.createIcons();
+    }
+
+    function closeConfigModal() {
+      const modal = document.getElementById("modal-config");
+      modal.classList.add("hidden");
+      hideFeedback();
+    }
+
+    function updateProfitEstimate() {
+      const growth = parseFloat(document.getElementById("cfg-growth-rate").value) || 0.05;
+      const stake = parseFloat(document.getElementById("cfg-stake-amount").value) || 1.0;
+      const ticks = parseInt(document.getElementById("cfg-exit-ticks").value) || 9;
+
+      if (ticks >= 2 && stake > 0) {
+        const steps = ticks - 1;
+        const multiplier = Math.pow(1 + growth, steps);
+        const netProfit = stake * (multiplier - 1);
+        const pct = (multiplier - 1) * 100;
+        document.getElementById("cfg-profit-estimate").innerText = `+$${netProfit.toFixed(2)} (+${pct.toFixed(1)}% em ${steps} degraus)`;
+      } else {
+        document.getElementById("cfg-profit-estimate").innerText = "$0.00";
+      }
+    }
+
+    function showFeedback(msg, isError = false) {
+      const el = document.getElementById("cfg-feedback-msg");
+      el.innerText = msg;
+      el.className = `text-xs font-semibold text-center py-1.5 px-3 rounded-lg ${isError ? 'bg-rose-950/80 text-rose-300 border border-rose-500/40' : 'bg-emerald-950/80 text-emerald-300 border border-emerald-500/40'}`;
+      el.classList.remove("hidden");
+    }
+
+    function hideFeedback() {
+      const el = document.getElementById("cfg-feedback-msg");
+      el.classList.add("hidden");
+    }
+
+    async function handleSaveConfig(event) {
+      event.preventDefault();
+      const btn = document.getElementById("btn-save-cfg");
+      const origHtml = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = '<i data-lucide="loader" class="w-4 h-4 animate-spin"></i><span>Salvando...</span>';
+      lucide.createIcons();
+
+      const payload = {
+        growth_rate: parseFloat(document.getElementById("cfg-growth-rate").value),
+        stake_amount: parseFloat(document.getElementById("cfg-stake-amount").value),
+        exit_ticks: parseInt(document.getElementById("cfg-exit-ticks").value),
+        daily_stop_loss_usd: parseFloat(document.getElementById("cfg-stop-loss").value),
+        daily_take_profit_usd: parseFloat(document.getElementById("cfg-take-profit").value),
+        max_consecutive_losses: parseInt(document.getElementById("cfg-max-losses").value)
+      };
+
+      try {
+        const res = await fetch("/api/config", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (res.ok && data.status === "success") {
+          currentConfig = data.config;
+          showFeedback("Configurações salvas e aplicadas com sucesso!");
+          logTerminal(data.message, "cyan");
+          setTimeout(() => {
+            closeConfigModal();
+            btn.disabled = false;
+            btn.innerHTML = origHtml;
+            lucide.createIcons();
+          }, 800);
+        } else {
+          showFeedback(data.message || "Erro ao salvar configurações.", true);
+          btn.disabled = false;
+          btn.innerHTML = origHtml;
+          lucide.createIcons();
+        }
+      } catch (err) {
+        showFeedback("Falha na comunicação: " + err, true);
+        btn.disabled = false;
+        btn.innerHTML = origHtml;
+        lucide.createIcons();
+      }
+    }
+
+    // Fechar ao clicar no backdrop escuro
+    document.addEventListener("DOMContentLoaded", () => {
+      const modal = document.getElementById("modal-config");
+      if (modal) {
+        modal.addEventListener("click", (e) => {
+          if (e.target.id === "modal-config") {
+            closeConfigModal();
+          }
+        });
+      }
+    });
 
     let lastLog = "";
     function logTerminal(msg, color = "slate") {
