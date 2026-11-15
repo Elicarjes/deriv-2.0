@@ -1,0 +1,99 @@
+"""
+Módulo de Cliente de Conta Deriv (AccountClient).
+Permite conectar e gerenciar múltiplas contas (Primária e Secundária/Escudo)
+de forma desacoplada, independente e orientada a eventos.
+"""
+
+import json
+import logging
+import urllib.request
+from typing import Optional, Dict, Any
+
+logger = logging.getLogger("AccountClient")
+
+
+class AccountClient:
+    def __init__(
+        self,
+        account_role: str,  # "primary" ou "secondary"
+        name: str,          # Ex: "Conta Primária (Real)"
+        token: str,
+        app_id: str,
+        account_id: str,
+        rest_base_url: str = "https://api.derivws.com"
+    ):
+        self.account_role = account_role
+        self.name = name
+        self.token = token.strip() if token else ""
+        self.app_id = str(app_id).strip() if app_id else ""
+        self.account_id = str(account_id).strip() if account_id else ""
+        self.rest_base_url = rest_base_url
+        self.balance: float = 0.0
+        self.is_connected: bool = False
+        self.last_error: str = ""
+
+    @property
+    def account_type(self) -> str:
+        aid = self.account_id.upper()
+        if "DOT" in aid or "VRTC" in aid or "DEMO" in aid:
+            return "Demo"
+        elif "ROT" in aid or "REAL" in aid or "CR" in aid:
+            return "Real"
+        return "Demo" if not self.account_id else "Real"
+
+    def is_configured(self) -> bool:
+        return bool(self.token and self.account_id)
+
+    def fetch_balance(self) -> float:
+        """Busca o saldo inicial da conta via REST API oficial."""
+        if not self.is_configured():
+            return 0.0
+        try:
+            headers = {
+                "Authorization": f"Bearer {self.token}",
+                "Deriv-App-ID": str(self.app_id),
+                "User-Agent": "Mozilla/5.0"
+            }
+            url = f"{self.rest_base_url}/trading/v1/options/accounts"
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=8.0) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                for acc in data.get("data", []):
+                    if acc.get("account_id") == self.account_id:
+                        self.balance = float(acc.get("balance", 0.0))
+                        logger.info(f"💵 Saldo carregado [{self.name}]: ${self.balance:.2f} USD ({self.account_type})")
+                        return self.balance
+                # Se não encontrou pelo account_id exato, pega a primeira conta correspondente
+                if data.get("data"):
+                    self.balance = float(data["data"][0].get("balance", 0.0))
+                    return self.balance
+        except Exception as e:
+            self.last_error = str(e)
+            logger.warning(f"Aviso ao buscar saldo da {self.name} ({self.account_id}): {e}")
+        return self.balance
+
+    def get_otp_url(self) -> str:
+        """Solicita OTP para conexão WebSocket autenticada dedicada."""
+        if not self.is_configured():
+            raise ValueError(f"{self.name} não está devidamente configurada com Token e Account ID.")
+        headers = {
+            "Authorization": f"Bearer {self.token}",
+            "Deriv-App-ID": str(self.app_id),
+            "User-Agent": "Mozilla/5.0"
+        }
+        otp_url = f"{self.rest_base_url}/trading/v1/options/accounts/{self.account_id}/otp"
+        req = urllib.request.Request(otp_url, headers=headers, method="POST")
+        with urllib.request.urlopen(req, timeout=10.0) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            return data["data"]["url"]
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "role": self.account_role,
+            "name": self.name,
+            "account_id": self.account_id,
+            "account_type": self.account_type,
+            "balance": self.balance,
+            "is_configured": self.is_configured(),
+            "is_connected": self.is_connected
+        }

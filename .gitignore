@@ -19,6 +19,7 @@ __pycache__/
 *.log
 scratch/
 test_*.py
+data/
 
 # IDEs e Editores
 .vscode/

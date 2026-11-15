@@ -24,6 +24,7 @@ from config import BotConfig
 from risk_manager import RiskManager
 from asset_selector import find_safest_asset
 from session_manager import SessionManager
+from account_client import AccountClient
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("WebServer")
@@ -44,11 +45,36 @@ class DashboardState:
         self.session_start_time = datetime.now()
         self.session_trades: List[Dict[str, Any]] = []
 
+        # Contas Desacopladas (Multi-Contas PAT)
+        self.primary_account = AccountClient(
+            account_role="primary",
+            name="Conta Primária (Real)",
+            token=config.token,
+            app_id=config.app_id,
+            account_id=config.account_id,
+            rest_base_url=config.rest_base_url
+        )
+        self.secondary_account = AccountClient(
+            account_role="secondary",
+            name="Conta Secundária (Escudo Demo)",
+            token=config.secondary_token,
+            app_id=config.secondary_app_id,
+            account_id=config.secondary_account_id,
+            rest_base_url=config.rest_base_url
+        )
+
+        # Modos de Operação: "shield_combined", "primary_only", "secondary_only"
+        self.operation_mode = config.operation_mode
+        self.shield_trigger_losses = config.shield_trigger_losses
+        self.shield_losses_count = 0
+        self.sniper_armed = False
+        self.active_trade_account = "primary" if self.operation_mode == "primary_only" else "secondary"
+
         self.is_running = False
         self.status_message = "Parado"
-        self.account_id = config.account_id or "DOT..."
-        self.account_balance = 0.0
-        self.account_type = "Demo" if ("DOT" in self.account_id or "demo" in self.account_id.lower()) else "Real"
+        self.account_id = self.get_active_account().account_id or "DOT..."
+        self.account_balance = self.get_active_account().balance
+        self.account_type = self.get_active_account().account_type
         self.rate_limit_status = "OK • Teto 360 req/min"
         self.is_rate_limited = False
         self.account_limits = {
@@ -57,6 +83,12 @@ class DashboardState:
             "max_concurrent_contracts": 1,
             "architecture": "Event-Driven Push (Zero Polling)"
         }
+
+    def get_active_account(self) -> AccountClient:
+        """Retorna o cliente de conta atualmente em uso para trade."""
+        if self.active_trade_account == "primary":
+            return self.primary_account
+        return self.secondary_account
 
         self.active_symbol = config.symbol
         self.active_asset_name = "Volatility 10"
@@ -135,12 +167,14 @@ class DashboardState:
 
     def to_dict(self) -> Dict[str, Any]:
         win_rate = (self.risk.wins / self.risk.total_trades * 100) if self.risk.total_trades > 0 else 0.0
+        active_acc = self.get_active_account()
+
         return {
             "is_running": self.is_running,
             "status_message": self.status_message,
-            "account_id": self.account_id,
-            "account_balance": self.account_balance,
-            "account_type": self.account_type,
+            "account_id": active_acc.account_id or self.account_id,
+            "account_balance": active_acc.balance if active_acc.balance > 0 else self.account_balance,
+            "account_type": active_acc.account_type,
             "rate_limit_status": self.rate_limit_status,
             "is_rate_limited": self.is_rate_limited,
             "account_limits": self.account_limits,
@@ -173,7 +207,16 @@ class DashboardState:
             "session_id": self.session_id,
             "session_number": self.session_number,
             "session_start_time": self.session_start_time.strftime("%H:%M:%S"),
-            "archived_sessions_count": len(self.session_manager.get_all_sessions())
+            "archived_sessions_count": len(self.session_manager.get_all_sessions()),
+
+            # Status Multi-Contas & Modo Escudo
+            "operation_mode": self.operation_mode,
+            "shield_trigger_losses": self.shield_trigger_losses,
+            "shield_losses_count": self.shield_losses_count,
+            "sniper_armed": self.sniper_armed,
+            "active_trade_account": self.active_trade_account,
+            "primary_account": self.primary_account.to_dict(),
+            "secondary_account": self.secondary_account.to_dict()
         }
 
     async def notify_clients(self):
@@ -194,46 +237,23 @@ cfg = BotConfig()
 state = DashboardState(cfg)
 
 
-def fetch_initial_balance():
-    """Busca o saldo inicial da conta via REST para exibir na inicialização."""
-    try:
-        headers = {
-            "Authorization": f"Bearer {cfg.token}",
-            "Deriv-App-ID": str(cfg.app_id),
-            "User-Agent": "Mozilla/5.0"
-        }
-        url = f"{cfg.rest_base_url}/trading/v1/options/accounts"
-        req = urllib.request.Request(url, headers=headers)
-        with urllib.request.urlopen(req) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-            for acc in data.get("data", []):
-                if acc.get("account_id") == cfg.account_id:
-                    state.account_balance = float(acc.get("balance", 0.0))
-                    state.account_id = acc.get("account_id")
-                    logger.info(f"Saldo inicial carregado: ${state.account_balance:.2f} USD")
-                    break
-    except Exception as e:
-        logger.warning(f"Erro ao obter saldo inicial: {e}")
+def fetch_initial_balances():
+    """Busca o saldo inicial de ambas as contas (Primária e Secundária) via REST."""
+    bal_prim = state.primary_account.fetch_balance()
+    bal_sec = state.secondary_account.fetch_balance()
+    active_acc = state.get_active_account()
+    state.account_balance = active_acc.balance
+    state.account_id = active_acc.account_id
+    state.account_type = active_acc.account_type
+    logger.info(f"✅ Contas prontas: Primária ${bal_prim:.2f} ({state.primary_account.account_type}) | Secundária ${bal_sec:.2f} ({state.secondary_account.account_type})")
 
 
-fetch_initial_balance()
+fetch_initial_balances()
 
 
 class BotRunner:
     def __init__(self, dashboard_state: DashboardState):
         self.st = dashboard_state
-
-    def get_otp_url(self) -> str:
-        headers = {
-            "Authorization": f"Bearer {self.st.config.token}",
-            "Deriv-App-ID": str(self.st.config.app_id),
-            "User-Agent": "Mozilla/5.0"
-        }
-        otp_url = f"{self.st.config.rest_base_url}/trading/v1/options/accounts/{self.st.config.account_id}/otp"
-        req = urllib.request.Request(otp_url, headers=headers, method="POST")
-        with urllib.request.urlopen(req) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-            return data["data"]["url"]
 
     async def heartbeat(self, ws):
         try:
@@ -260,7 +280,7 @@ class BotRunner:
         logger.info("✅ Resfriamento de rate limit concluído. Retomando...")
         await self.st.notify_clients()
 
-    async def recv_next(self, ws, expected_msg_type: Optional[str] = None, req_id: Optional[int] = None, timeout: float = 12.0) -> Optional[Dict[str, Any]]:
+    async def recv_next(self, ws, expected_msg_type: Optional[str] = None, req_id: Optional[int] = None, timeout: float = 12.0, account: Optional[AccountClient] = None) -> Optional[Dict[str, Any]]:
         """
         Consome mensagens do WebSocket de forma orientada a eventos.
         Trata atualizações de saldo e pings concorrentes sem dessincronizar.
@@ -281,10 +301,11 @@ class BotRunner:
             # 1. Trata subscrição de Saldo nativo em tempo real
             if m.get("msg_type") == "balance" and "balance" in m:
                 bal = float(m["balance"].get("balance", self.st.account_balance))
-                if bal != self.st.account_balance:
-                    self.st.account_balance = bal
-                    logger.info(f"💵 Saldo em tempo real: ${bal:.2f} USD")
-                    await self.st.notify_clients()
+                if account:
+                    account.balance = bal
+                self.st.account_balance = bal
+                logger.info(f"💵 Saldo em tempo real [{account.name if account else 'Conta'}]: ${bal:.2f} USD")
+                await self.st.notify_clients()
                 continue
 
             # 2. Ignora pings de heartbeat
@@ -317,24 +338,57 @@ class BotRunner:
 
         return None
 
-    async def cleanup_orphaned_positions_once(self, ws):
+    async def cleanup_orphaned_positions_once(self, ws, account: Optional[AccountClient] = None):
         """
         Executado APENAS UMA VEZ na conexão para limpar contratos remanescentes.
         Zero Polling: Não roda durante o ciclo normal de trade.
         """
         try:
             await ws.send(json.dumps({"portfolio": 1, "req_id": 999}))
-            r = await self.recv_next(ws, expected_msg_type="portfolio", req_id=999, timeout=5.0)
+            r = await self.recv_next(ws, expected_msg_type="portfolio", req_id=999, timeout=5.0, account=account)
             if r and "portfolio" in r:
                 contracts = r["portfolio"].get("contracts", [])
                 if contracts:
-                    logger.info(f"Identificado(s) {len(contracts)} contrato(s) órfão(s) na conexão. Liquidando...")
+                    logger.info(f"Identificado(s) {len(contracts)} contrato(s) órfão(s) na conexão [{account.name if account else ''}]. Liquidando...")
                     for c in contracts:
                         cid = c.get("contract_id")
                         await ws.send(json.dumps({"sell": cid, "price": 0, "req_id": 998}))
                         await asyncio.sleep(1)
         except Exception as e:
             logger.debug(f"Aviso na checagem inicial de portfolio: {e}")
+
+    def _handle_shield_post_trade(self, account: AccountClient, profit: float) -> bool:
+        """Processa a transição de estado da Conta Escudo e retorna True se houver troca de conta."""
+        if self.st.operation_mode != "shield_combined":
+            return False
+
+        if account.account_role == "secondary":
+            if profit <= 0:
+                self.st.shield_losses_count += 1
+                if self.st.shield_losses_count >= self.st.shield_trigger_losses:
+                    self.st.sniper_armed = True
+                    self.st.latest_log = f"🎯 GATILHO ATIVADO: {self.st.shield_losses_count} derrotas consecutivas no Escudo! O PRÓXIMO TRADE SERÁ NA CONTA REAL!"
+                    logger.warning(self.st.latest_log)
+                    return True
+                else:
+                    self.st.latest_log = f"🛡️ Escudo Demo: {self.st.shield_losses_count}/{self.st.shield_trigger_losses} derrotas para armar Sniper Real."
+            else:
+                self.st.shield_losses_count = 0
+                self.st.sniper_armed = False
+                self.st.latest_log = f"🛡️ Vitória no Escudo Demo (+${profit:.2f})! Contador de perdas resetado (0/{self.st.shield_trigger_losses})."
+        else:
+            # Trade encerrado na Conta Primária (Real)
+            self.st.sniper_armed = False
+            self.st.shield_losses_count = 0
+            if profit > 0:
+                self.st.latest_log = f"💰 SNIPER REAL CONCLUÍDO COM VITÓRIA (+${profit:.2f})! Retornando ao Escudo Demo."
+                logger.info(self.st.latest_log)
+            else:
+                self.st.latest_log = f"⚠️ Trade Real finalizado (${profit:.2f}). Retornando ao Escudo Demo para nova sondagem."
+                logger.warning(self.st.latest_log)
+            return True
+
+        return False
 
     async def run_loop(self):
         self.st.is_running = True
@@ -350,25 +404,44 @@ class BotRunner:
         self.st.active_symbol = winner["symbol"]
         self.st.active_asset_name = winner["name"]
         self.st.active_asset_rate = winner["survived_target_pct"]
-        self.st.latest_log = f"Ativo campeão selecionado: {winner['name']} ({winner['survived_target_pct']:.1f}% em 2T)"
+        self.st.latest_log = f"Ativo campeão selecionado: {winner['name']} ({winner['survived_target_pct']:.1f}% em {self.st.config.exit_ticks}T)"
         await self.st.notify_clients()
 
         trade_count_scan = 0
 
         while self.st.is_running and self.st.risk.can_trade():
+            # 1. Determina a conta alvo para este ciclo
+            if self.st.operation_mode == "primary_only":
+                target_account = self.st.primary_account
+            elif self.st.operation_mode == "secondary_only":
+                target_account = self.st.secondary_account
+            else:  # "shield_combined"
+                if self.st.sniper_armed:
+                    target_account = self.st.primary_account
+                    msg = "🎯 [MODO ESCUDO] Sniper armado! Disparando na CONTA REAL..."
+                else:
+                    target_account = self.st.secondary_account
+                    msg = f"🛡️ [MODO ESCUDO] Sondando mercado no Escudo Demo ({self.st.shield_losses_count}/{self.st.shield_trigger_losses} losses)..."
+                self.st.latest_log = msg
+
+            self.st.active_trade_account = target_account.account_role
+            self.st.account_id = target_account.account_id
+            self.st.account_type = target_account.account_type
+            await self.st.notify_clients()
+
             try:
-                otp_url = self.get_otp_url()
+                otp_url = target_account.get_otp_url()
 
                 async with websockets.connect(otp_url, ping_interval=None) as ws:
                     hb_task = asyncio.create_task(self.heartbeat(ws))
 
-                    # 1. Subscrição nativa de Saldo Deriv em tempo real (Push Stream oficial)
+                    # 1. Subscrição nativa de Saldo Deriv em tempo real
                     await ws.send(json.dumps({"balance": 1, "subscribe": 1, "req_id": 1}))
 
-                    # 2. Limpeza única de contratos órfãos apenas na inicialização da conexão (Sem Polling!)
-                    await self.cleanup_orphaned_positions_once(ws)
+                    # 2. Limpeza única de contratos órfãos apenas na inicialização
+                    await self.cleanup_orphaned_positions_once(ws, account=target_account)
 
-                    # 3. Loop de Trading 100% Event-Driven (Zero Polling de Portfolio)
+                    # 3. Executa ordens enquanto estiver nesta conta
                     while self.st.is_running and self.st.risk.can_trade():
                         # A. Solicita Proposta Streaming
                         prop_req = {
@@ -381,7 +454,7 @@ class BotRunner:
                         }
                         await ws.send(json.dumps(prop_req))
 
-                        prop_resp = await self.recv_next(ws, expected_msg_type="proposal", req_id=10)
+                        prop_resp = await self.recv_next(ws, expected_msg_type="proposal", req_id=10, account=target_account)
                         if not prop_resp or "error" in prop_resp:
                             err_msg = prop_resp.get("error", {}).get("message", "Sem resposta") if prop_resp else "Timeout"
                             self.st.latest_log = f"Aviso de proposta: {err_msg}"
@@ -409,7 +482,7 @@ class BotRunner:
                                     # Condição 1: Já está no início do ciclo (tick 0 ou <= max_entry_tick)
                                     if cur_tick <= self.st.config.max_entry_tick:
                                         cycle_ready = True
-                                        self.st.latest_log = f"⚡ Ciclo virgem detectado ({cur_tick}º tick)! Disparando entrada..."
+                                        self.st.latest_log = f"⚡ Ciclo virgem detectado ({cur_tick}º tick)! Disparando entrada [{target_account.name}]..."
                                         logger.info(self.st.latest_log)
                                         await self.st.notify_clients()
                                         break
@@ -417,17 +490,17 @@ class BotRunner:
                                     # Condição 2: Reset detectado (cur_tick resetou após bater na parede)
                                     if prev_cycle_tick is not None and cur_tick < prev_cycle_tick:
                                         cycle_ready = True
-                                        self.st.latest_log = f"💥 Parede atingida após {prev_cycle_tick} ticks! Novo ciclo iniciado ({cur_tick}T). Disparando compra..."
+                                        self.st.latest_log = f"💥 Parede atingida após {prev_cycle_tick} ticks! Novo ciclo ({cur_tick}T). Disparando compra [{target_account.name}]..."
                                         logger.info(self.st.latest_log)
                                         await self.st.notify_clients()
                                         break
 
                                     prev_cycle_tick = cur_tick
-                                    self.st.latest_log = f"⏳ Aguardando ciclo resetar... (Ativo no {cur_tick}º tick sem bater na parede)"
+                                    self.st.latest_log = f"⏳ Aguardando ciclo resetar... ({cur_tick}º tick sem parede) [{target_account.name}]"
                                     await self.st.notify_clients()
 
                                 # Aguarda o próximo tick do stream de proposta
-                                prop_resp = await self.recv_next(ws, expected_msg_type="proposal")
+                                prop_resp = await self.recv_next(ws, expected_msg_type="proposal", account=target_account)
                                 if not prop_resp or "error" in prop_resp:
                                     break
                                 prop_id = prop_resp.get("proposal", {}).get("id", prop_id)
@@ -443,11 +516,11 @@ class BotRunner:
 
                         # B. Executa Compra do Contrato
                         await ws.send(json.dumps({"buy": prop_id, "price": self.st.config.stake_amount, "req_id": 20}))
-                        buy_resp = await self.recv_next(ws, expected_msg_type="buy", req_id=20)
+                        buy_resp = await self.recv_next(ws, expected_msg_type="buy", req_id=20, account=target_account)
                         
                         if not buy_resp or "error" in buy_resp:
                             err_msg = buy_resp.get("error", {}).get("message", "Falha na compra") if buy_resp else "Timeout"
-                            self.st.latest_log = f"Falha na compra: {err_msg}"
+                            self.st.latest_log = f"Falha na compra [{target_account.name}]: {err_msg}"
                             await self.st.notify_clients()
                             await asyncio.sleep(3)
                             continue
@@ -457,16 +530,17 @@ class BotRunner:
                         self.st.in_trade = True
                         self.st.current_ticks = 0
                         self.st.current_profit = 0.0
-                        self.st.latest_log = f"Ordem aberta: Contrato #{cid} ({self.st.active_asset_name})"
+                        self.st.latest_log = f"Ordem aberta ({target_account.account_type}): #{cid} ({self.st.active_asset_name})"
                         await self.st.notify_clients()
 
                         # C. Monitoramento em Tempo Real via Stream Push (proposal_open_contract)
                         await ws.send(json.dumps({"proposal_open_contract": 1, "contract_id": cid, "subscribe": 1, "req_id": 30}))
                         poc_sub = None
                         trade_done = False
+                        account_switched = False
 
                         while not trade_done and self.st.is_running:
-                            m = await self.recv_next(ws)
+                            m = await self.recv_next(ws, account=target_account)
                             if not m:
                                 continue
 
@@ -488,25 +562,39 @@ class BotRunner:
                             if is_sold:
                                 p_final = float(c.get("profit", 0.0))
                                 self.st.risk.register_trade(p_final)
-                                self._record_trade(p_final, ticks=self.st.current_ticks, contract_id=cid)
+                                self._record_trade(
+                                    p_final,
+                                    ticks=self.st.current_ticks,
+                                    contract_id=cid,
+                                    account_role=target_account.account_role,
+                                    account_type=target_account.account_type
+                                )
                                 trade_done = True
+                                account_switched = self._handle_shield_post_trade(target_account, p_final)
                                 break
 
                             # D. Cash Out Automatizado ao atingir os ticks estipulados
                             if self.st.current_ticks >= self.st.config.exit_ticks and is_valid_to_sell:
-                                self.st.latest_log = f"Alvo de {self.st.config.exit_ticks} ticks atingido! Disparando Cash Out..."
+                                self.st.latest_log = f"Alvo de {self.st.config.exit_ticks} ticks atingido! Disparando Cash Out [{target_account.name}]..."
                                 await self.st.notify_clients()
                                 await ws.send(json.dumps({"sell": cid, "price": 0, "req_id": 40}))
                                 
-                                sell_resp = await self.recv_next(ws, expected_msg_type="sell", req_id=40)
+                                sell_resp = await self.recv_next(ws, expected_msg_type="sell", req_id=40, account=target_account)
                                 if sell_resp and "sell" in sell_resp:
                                     sold_for = float(sell_resp["sell"]["sold_for"])
                                     net = sold_for - self.st.config.stake_amount
                                     self.st.risk.register_trade(net)
-                                    self._record_trade(net, ticks=self.st.current_ticks, contract_id=cid)
-                                    self.st.latest_log = f"CASH OUT CONFIRMADO: +${net:.2f} no {self.st.current_ticks}º tick"
-                                trade_done = True
-                                break
+                                    self._record_trade(
+                                        net,
+                                        ticks=self.st.current_ticks,
+                                        contract_id=cid,
+                                        account_role=target_account.account_role,
+                                        account_type=target_account.account_type
+                                    )
+                                    self.st.latest_log = f"CASH OUT CONFIRMADO: +${net:.2f} no {self.st.current_ticks}º tick ({target_account.name})"
+                                    trade_done = True
+                                    account_switched = self._handle_shield_post_trade(target_account, net)
+                                    break
 
                         if poc_sub:
                             await ws.send(json.dumps({"forget": poc_sub}))
@@ -515,6 +603,11 @@ class BotRunner:
                         self.st.current_contract_id = None
                         trade_count_scan += 1
                         await self.st.notify_clients()
+
+                        # Se a lógica da Conta Escudo determinou troca de conta, troca de conexão WebSocket!
+                        if account_switched:
+                            logger.info("🔄 Transição de conta ativada! Trocando de conexão...")
+                            break
 
                         # Reavaliação inteligente a cada 5 trades
                         if trade_count_scan >= 5 and self.st.config.auto_select_best_asset:
@@ -532,7 +625,7 @@ class BotRunner:
                     hb_task.cancel()
 
             except Exception as e:
-                self.st.latest_log = f"Aviso de conexão: {e}. Reconectando..."
+                self.st.latest_log = f"Aviso de conexão [{target_account.name}]: {e}. Reconectando..."
                 await self.st.notify_clients()
                 await asyncio.sleep(5)
 
@@ -545,7 +638,7 @@ class BotRunner:
             self.st.status_message = "Parado"
         await self.st.notify_clients()
 
-    def _record_trade(self, profit: float, ticks: int = 0, contract_id: Optional[int] = None):
+    def _record_trade(self, profit: float, ticks: int = 0, contract_id: Optional[int] = None, account_role: str = "secondary", account_type: str = "Demo"):
         now = datetime.now().strftime("%H:%M:%S")
         trade_item = {
             "time": now,
@@ -554,7 +647,9 @@ class BotRunner:
             "profit": round(profit, 2),
             "result": "VITÓRIA" if profit > 0 else "DERROTA",
             "ticks": ticks or self.st.current_ticks,
-            "contract_id": contract_id or self.st.current_contract_id
+            "contract_id": contract_id or self.st.current_contract_id,
+            "account_role": account_role,
+            "account_type": account_type
         }
         self.st.recent_trades.insert(0, trade_item)
         self.st.session_trades.insert(0, trade_item)
@@ -637,6 +732,16 @@ class ConfigUpdateRequest(BaseModel):
     max_entry_tick: int = 1
     start_new_session: bool = False
 
+    # Parâmetros da Conta Escudo e Multi-Contas
+    operation_mode: Optional[str] = "secondary_only"
+    shield_trigger_losses: Optional[int] = 2
+    primary_token: Optional[str] = None
+    primary_app_id: Optional[str] = None
+    primary_account_id: Optional[str] = None
+    secondary_token: Optional[str] = None
+    secondary_app_id: Optional[str] = None
+    secondary_account_id: Optional[str] = None
+
 
 @app.get("/api/config")
 async def get_config():
@@ -648,7 +753,15 @@ async def get_config():
         "daily_take_profit_usd": state.config.daily_take_profit_usd,
         "max_consecutive_losses": state.config.max_consecutive_losses,
         "wait_cycle_reset": state.config.wait_cycle_reset,
-        "max_entry_tick": state.config.max_entry_tick
+        "max_entry_tick": state.config.max_entry_tick,
+        "operation_mode": state.operation_mode,
+        "shield_trigger_losses": state.shield_trigger_losses,
+        "primary_token": state.primary_account.token,
+        "primary_app_id": state.primary_account.app_id,
+        "primary_account_id": state.primary_account.account_id,
+        "secondary_token": state.secondary_account.token,
+        "secondary_app_id": state.secondary_account.app_id,
+        "secondary_account_id": state.secondary_account.account_id
     }
 
 
@@ -667,6 +780,38 @@ async def update_config(cfg_in: ConfigUpdateRequest):
     state.config.max_consecutive_losses = int(cfg_in.max_consecutive_losses)
     state.config.wait_cycle_reset = bool(cfg_in.wait_cycle_reset)
     state.config.max_entry_tick = int(cfg_in.max_entry_tick)
+
+    # Atualizações de Modo de Operação e Contas
+    if cfg_in.operation_mode:
+        state.operation_mode = cfg_in.operation_mode
+        state.config.operation_mode = cfg_in.operation_mode
+    if cfg_in.shield_trigger_losses is not None:
+        state.shield_trigger_losses = max(1, int(cfg_in.shield_trigger_losses))
+        state.config.shield_trigger_losses = state.shield_trigger_losses
+
+    if cfg_in.primary_token:
+        state.primary_account.token = cfg_in.primary_token.strip()
+        state.config.token = state.primary_account.token
+    if cfg_in.primary_app_id:
+        state.primary_account.app_id = cfg_in.primary_app_id.strip()
+        state.config.app_id = state.primary_account.app_id
+    if cfg_in.primary_account_id:
+        state.primary_account.account_id = cfg_in.primary_account_id.strip()
+        state.config.account_id = state.primary_account.account_id
+
+    if cfg_in.secondary_token:
+        state.secondary_account.token = cfg_in.secondary_token.strip()
+        state.config.secondary_token = state.secondary_account.token
+    if cfg_in.secondary_app_id:
+        state.secondary_account.app_id = cfg_in.secondary_app_id.strip()
+        state.config.secondary_app_id = state.secondary_account.app_id
+    if cfg_in.secondary_account_id:
+        state.secondary_account.account_id = cfg_in.secondary_account_id.strip()
+        state.config.secondary_account_id = state.secondary_account.account_id
+
+    # Atualiza saldos se credenciais mudaram
+    state.primary_account.fetch_balance()
+    state.secondary_account.fetch_balance()
 
     # Se o usuário solicitou iniciar como uma nova sessão de teste
     if cfg_in.start_new_session and not state.in_trade:
@@ -689,10 +834,18 @@ async def update_config(cfg_in: ConfigUpdateRequest):
         "DAILY_TAKE_PROFIT_USD": f"{state.config.daily_take_profit_usd:.2f}",
         "MAX_CONSECUTIVE_LOSSES": str(state.config.max_consecutive_losses),
         "WAIT_CYCLE_RESET": str(state.config.wait_cycle_reset).lower(),
-        "MAX_ENTRY_TICK": str(state.config.max_entry_tick)
+        "MAX_ENTRY_TICK": str(state.config.max_entry_tick),
+        "OPERATION_MODE": state.operation_mode,
+        "SHIELD_TRIGGER_LOSSES": str(state.shield_trigger_losses),
+        "DERIV_PRIMARY_API_TOKEN": state.primary_account.token,
+        "DERIV_PRIMARY_APP_ID": state.primary_account.app_id,
+        "DERIV_PRIMARY_ACCOUNT_ID": state.primary_account.account_id,
+        "DERIV_SECONDARY_API_TOKEN": state.secondary_account.token,
+        "DERIV_SECONDARY_APP_ID": state.secondary_account.app_id,
+        "DERIV_SECONDARY_ACCOUNT_ID": state.secondary_account.account_id
     })
 
-    log_msg = f"⚙️ Configurações salvas: Stake ${state.config.stake_amount:.2f} | Growth {state.config.growth_rate*100:.0f}% | Saída {state.config.exit_ticks}T | Reset Parede: {'SIM' if state.config.wait_cycle_reset else 'NÃO'}"
+    log_msg = f"⚙️ Configurações salvas: Modo {state.operation_mode} | Gatilho {state.shield_trigger_losses}L | Stake ${state.config.stake_amount:.2f} | Growth {state.config.growth_rate*100:.0f}% | Saída {state.config.exit_ticks}T"
     state.latest_log = log_msg
     logger.info(log_msg)
     await state.notify_clients()
@@ -708,7 +861,9 @@ async def update_config(cfg_in: ConfigUpdateRequest):
             "daily_take_profit_usd": state.config.daily_take_profit_usd,
             "max_consecutive_losses": state.config.max_consecutive_losses,
             "wait_cycle_reset": state.config.wait_cycle_reset,
-            "max_entry_tick": state.config.max_entry_tick
+            "max_entry_tick": state.config.max_entry_tick,
+            "operation_mode": state.operation_mode,
+            "shield_trigger_losses": state.shield_trigger_losses
         }
     }
 

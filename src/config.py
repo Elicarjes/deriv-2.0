@@ -7,10 +7,22 @@ load_dotenv()
 
 @dataclass
 class BotConfig:
-    # Credenciais Deriv
-    token: str = os.getenv("DERIV_API_TOKEN", "")
-    app_id: str = os.getenv("DERIV_APP_ID", "")
-    account_id: str = os.getenv("DERIV_ACCOUNT_ID", "")  # Ex: VRTC... para conta Demo
+    # Credenciais Deriv - Conta Primária (Real por padrão)
+    token: str = os.getenv("DERIV_PRIMARY_API_TOKEN", os.getenv("DERIV_API_TOKEN", ""))
+    app_id: str = os.getenv("DERIV_PRIMARY_APP_ID", os.getenv("DERIV_APP_ID", "34XANuYNS8JMRsKZsNfFz"))
+    account_id: str = os.getenv("DERIV_PRIMARY_ACCOUNT_ID", os.getenv("DERIV_ACCOUNT_ID", ""))
+
+    # Credenciais Deriv - Conta Secundária (Escudo / Demo por padrão)
+    secondary_token: str = os.getenv("DERIV_SECONDARY_API_TOKEN", os.getenv("DERIV_API_TOKEN", ""))
+    secondary_app_id: str = os.getenv("DERIV_SECONDARY_APP_ID", os.getenv("DERIV_APP_ID", "34XANuYNS8JMRsKZsNfFz"))
+    secondary_account_id: str = os.getenv("DERIV_SECONDARY_ACCOUNT_ID", os.getenv("DERIV_ACCOUNT_ID", ""))
+
+    # Modos de Operação:
+    # - "shield_combined": Opera na Conta Secundária (Demo) e após X derrotas dispara sniper na Conta Primária (Real)
+    # - "primary_only": Opera exclusivamente na Conta Primária (Real)
+    # - "secondary_only": Opera exclusivamente na Conta Secundária (Demo)
+    operation_mode: str = os.getenv("OPERATION_MODE", "secondary_only")
+    shield_trigger_losses: int = int(os.getenv("SHIELD_TRIGGER_LOSSES", "2"))  # X derrotas na demo para armar a Real
 
     # Configurações do Ativo e Contrato
     symbol: str = os.getenv("SYMBOL", "R_10")
