@@ -38,117 +38,192 @@
     }
   </style>
 </head>
-<body class="bg-slate-950 text-slate-100 font-sans min-h-screen flex flex-col antialiased">
+<body class="bg-slate-950 text-slate-100 font-sans min-h-screen flex antialiased overflow-x-hidden">
 
-  <!-- Header Fixo com Tamanho Estável (Zero Layout Shift) -->
-  <header class="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-50 px-6 py-3.5 flex flex-wrap items-center justify-between gap-4">
-    <div class="flex items-center space-x-3">
-      <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-emerald-500 to-cyan-500 flex items-center justify-center shadow-lg shadow-emerald-500/20">
-        <i data-lucide="cpu" class="w-5 h-5 text-slate-950"></i>
+  <!-- Mobile Backdrop para Sidebar -->
+  <div id="sidebar-backdrop" onclick="toggleSidebar()" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-40 hidden md:hidden"></div>
+
+  <!-- Menu Lateral Sidebar -->
+  <aside id="app-sidebar" class="fixed md:sticky top-0 inset-y-0 left-0 z-50 w-64 bg-slate-900/95 md:bg-slate-900/80 border-r border-slate-800 flex flex-col shrink-0 h-screen transform -translate-x-full md:translate-x-0 transition-transform duration-200 ease-in-out">
+    
+    <!-- Topo da Sidebar: Logo & App Brand -->
+    <div class="h-16 border-b border-slate-800/80 px-5 flex items-center justify-between shrink-0">
+      <div class="flex items-center space-x-3">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-emerald-500 to-cyan-500 flex items-center justify-center shadow-lg shadow-emerald-500/20">
+          <i data-lucide="cpu" class="w-5 h-5 text-slate-950"></i>
+        </div>
+        <div>
+          <h1 class="text-base font-bold bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent leading-tight">
+            Deriv Quant
+          </h1>
+          <p class="text-[10px] text-slate-400 flex items-center gap-1">
+            <span class="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+            Algorithmic 2.0
+          </p>
+        </div>
       </div>
-      <div>
-        <h1 class="text-lg font-bold bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">
-          Deriv Quant 2.0
-        </h1>
-        <p class="text-[11px] text-slate-400 flex items-center gap-1.5">
-          <span class="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-          Event-Driven Streaming • Zero Polling
-        </p>
-      </div>
+      <!-- Botão fechar no mobile -->
+      <button onclick="toggleSidebar()" class="md:hidden p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800">
+        <i data-lucide="x" class="w-4 h-4"></i>
+      </button>
     </div>
 
-    <!-- Barra de Status e Controles com Dimensões Fixas -->
-    <div class="flex items-center gap-3">
-      <!-- Identificação da Conta Ativa -->
-      <div class="bg-slate-800/80 border border-slate-700/80 rounded-lg px-3 py-1.5 text-xs flex items-center gap-2">
-        <span class="text-slate-400">Ativa:</span>
-        <span id="account-id" class="font-mono font-semibold text-slate-200">DOT93505571</span>
-        <span id="account-type-badge" class="px-1.5 py-0.2 rounded text-[10px] font-bold bg-amber-950/80 border border-amber-500/40 text-amber-300">DEMO</span>
+    <!-- Navegação Sidebar -->
+    <nav class="flex-1 px-3 py-4 space-y-1.5 overflow-y-auto">
+      <div class="px-3 pb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+        Menu Principal
       </div>
 
-      <!-- Saldo da Conta Primária (Real) -->
-      <div id="primary-balance-box" class="bg-slate-800/80 border border-slate-700/80 rounded-lg px-3 py-1 text-xs hidden flex-col justify-center">
-        <div class="flex items-center gap-1 text-[10px] text-slate-400">
-          <span>Real:</span>
-          <span id="primary-acc-id" class="font-mono text-emerald-300">...</span>
-        </div>
-        <span id="primary-balance" class="font-mono font-bold text-emerald-400 text-xs">$0.00</span>
-      </div>
-
-      <!-- Saldo da Conta Secundária (Escudo Demo) -->
-      <div id="secondary-balance-box" class="bg-slate-800/80 border border-slate-700/80 rounded-lg px-3 py-1 text-xs hidden flex-col justify-center">
-        <div class="flex items-center gap-1 text-[10px] text-slate-400">
-          <span>Escudo:</span>
-          <span id="secondary-acc-id" class="font-mono text-amber-300">...</span>
-        </div>
-        <span id="secondary-balance" class="font-mono font-bold text-amber-400 text-xs">$0.00</span>
-      </div>
-
-      <!-- Botão Sincronizar Saldos Deriv -->
-      <button id="btn-refresh-balances" onclick="refreshBalances()" title="Sincronizar saldos diretamente com a Deriv" class="p-1.5 rounded-lg font-semibold text-xs flex items-center justify-center transition shadow bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-slate-600 text-slate-300 hover:text-cyan-300">
-        <i data-lucide="refresh-cw" id="icon-refresh-balance" class="w-3.5 h-3.5"></i>
+      <!-- Item: Dashboard -->
+      <button onclick="switchPage('dashboard')" id="nav-item-dashboard" class="nav-item w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 shadow-sm shadow-cyan-500/5">
+        <i data-lucide="layout-dashboard" class="w-4 h-4"></i>
+        <span>Dashboard</span>
       </button>
 
-      <!-- Badge Rate Limit API (Monitoramento Anti-Bloqueio) -->
-      <div id="rate-limit-badge" class="bg-slate-800/80 border border-slate-700/80 rounded-lg px-2.5 py-1.5 text-xs flex items-center gap-1.5">
-        <span class="text-slate-400">API:</span>
-        <span id="rate-limit-text" class="font-mono font-semibold text-emerald-400">OK</span>
-      </div>
-
-      <!-- Saldo em Tempo Real (Conta Operacional) -->
-      <div id="single-balance-box" class="bg-slate-800/80 border border-slate-700/80 rounded-lg px-3 py-1.5 text-xs flex items-center gap-2 min-w-[150px] justify-between">
-        <span class="text-slate-400">Saldo:</span>
-        <span id="account-balance" class="font-mono font-bold text-emerald-400 text-sm">$0.00 USD</span>
-      </div>
-
-      <!-- Badge de Status com Largura Fixa (Não deforma a barra) -->
-      <div id="bot-status-badge" class="bg-slate-800 border border-slate-700 text-slate-300 text-xs px-3 py-1.5 rounded-lg font-medium flex items-center gap-2 w-28 justify-center">
-        <span id="bot-status-dot" class="w-2 h-2 rounded-full bg-slate-500"></span>
-        <span id="bot-status-text" class="truncate">Parado</span>
-      </div>
-
-      <!-- Botão Histórico de Sessões -->
-      <button onclick="openSessionsModal()" title="Ver Histórico de Sessões Anteriores" class="px-3 py-1.5 rounded-lg font-semibold text-xs flex items-center justify-center gap-1.5 transition shadow bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-slate-600 text-slate-200">
-        <i data-lucide="archive" class="w-4 h-4 text-purple-400"></i>
-        <span>Sessões (<span id="sessions-count" class="font-mono text-purple-300">0</span>)</span>
+      <!-- Item: Accounts -->
+      <button onclick="switchPage('accounts')" id="nav-item-accounts" class="nav-item w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-medium transition text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 border border-transparent">
+        <i data-lucide="wallet" class="w-4 h-4"></i>
+        <span>Accounts</span>
       </button>
 
-      <!-- Botão Nova Sessão -->
-      <button onclick="confirmStartNewSession()" title="Arquivar sessão atual e iniciar nova limpa" class="px-3 py-1.5 rounded-lg font-semibold text-xs flex items-center justify-center gap-1.5 transition shadow bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-slate-600 text-slate-200">
-        <i data-lucide="rotate-ccw" class="w-4 h-4 text-amber-400"></i>
-        <span>Nova Sessão</span>
+      <!-- Item: Sessões -->
+      <button onclick="switchPage('sessions')" id="nav-item-sessions" class="nav-item w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-medium transition text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 border border-transparent">
+        <i data-lucide="history" class="w-4 h-4"></i>
+        <span>Sessões</span>
       </button>
 
-      <!-- Botão Configurações -->
-      <button onclick="openConfigModal()" title="Configurar Parâmetros de Estratégia e Risco" class="px-3 py-1.5 rounded-lg font-semibold text-xs flex items-center justify-center gap-1.5 transition shadow bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-slate-600 text-slate-200">
-        <i data-lucide="sliders" class="w-4 h-4 text-cyan-400"></i>
-        <span>Config</span>
+      <!-- Item: Documentação -->
+      <button onclick="switchPage('docs')" id="nav-item-docs" class="nav-item w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-medium transition text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 border border-transparent">
+        <i data-lucide="book-open" class="w-4 h-4"></i>
+        <span>Documentação</span>
       </button>
+    </nav>
 
-      <!-- Botão Iniciar / Pausar com Largura Fixa -->
-      <button id="btn-toggle" onclick="toggleBot()" class="w-32 py-1.5 rounded-lg font-semibold text-xs flex items-center justify-center gap-2 transition shadow-lg bg-emerald-600 hover:bg-emerald-500 text-white">
-        <i data-lucide="play" class="w-4 h-4"></i>
-        <span>Iniciar Robô</span>
-      </button>
-
-      <!-- Divisor -->
-      <div class="h-6 w-px bg-slate-800"></div>
-
-      <!-- Badge Usuário Logado & Logout -->
-      <div class="flex items-center gap-1.5 bg-slate-900 border border-slate-800 rounded-lg pl-2.5 pr-1 py-1">
-        <span class="flex items-center gap-1.5 text-xs text-slate-300">
-          <i data-lucide="user" class="w-3.5 h-3.5 text-cyan-400"></i>
-          <span id="header-user-name" class="font-bold text-slate-200">admin</span>
+    <!-- Rodapé da Sidebar: Info & Conexão -->
+    <div class="p-3.5 border-t border-slate-800/80 bg-slate-900/50 shrink-0 space-y-2">
+      <div class="flex items-center justify-between text-xs px-1">
+        <span class="flex items-center gap-1.5 text-slate-400 text-[11px]">
+          <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+          WebSocket Push
         </span>
-        <button onclick="handleLogout()" title="Sair da Conta (Logout)" class="p-1 rounded-md text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition">
-          <i data-lucide="log-out" class="w-3.5 h-3.5"></i>
-        </button>
+        <span class="font-mono text-[10px] text-slate-500 bg-slate-800/80 px-1.5 py-0.5 rounded border border-slate-700/60">v2.0.4</span>
       </div>
     </div>
-  </header>
+  </aside>
 
-  <!-- Main Content -->
-  <main class="flex-1 max-w-7xl w-full mx-auto p-6 space-y-6">
+  <!-- Área Principal de Conteúdo -->
+  <div class="flex-1 flex flex-col min-w-0 min-h-screen">
+
+    <!-- Header Fixo com Tamanho Estável (Zero Layout Shift) -->
+    <header class="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-30 px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3">
+      <div class="flex items-center gap-3">
+        <!-- Botão Abrir Sidebar Mobile -->
+        <button onclick="toggleSidebar()" class="md:hidden p-2 rounded-lg bg-slate-800 border border-slate-700 text-slate-300 hover:text-white" title="Abrir Menu Lateral">
+          <i data-lucide="menu" class="w-4 h-4"></i>
+        </button>
+
+        <div class="flex items-center gap-2">
+          <span id="header-section-title" class="text-sm font-bold text-slate-200">Dashboard</span>
+          <span class="hidden sm:inline-block text-[11px] text-slate-500">•</span>
+          <span class="hidden sm:inline-block text-[11px] text-slate-400">Tempo Real</span>
+        </div>
+      </div>
+
+      <!-- Barra de Status e Controles com Dimensões Fixas -->
+      <div class="flex items-center gap-2.5 flex-wrap">
+        <!-- Identificação da Conta Ativa -->
+        <div class="bg-slate-800/80 border border-slate-700/80 rounded-lg px-3 py-1.5 text-xs flex items-center gap-2">
+          <span class="text-slate-400">Ativa:</span>
+          <span id="account-id" class="font-mono font-semibold text-slate-200">DOT93505571</span>
+          <span id="account-type-badge" class="px-1.5 py-0.2 rounded text-[10px] font-bold bg-amber-950/80 border border-amber-500/40 text-amber-300">DEMO</span>
+        </div>
+
+        <!-- Saldo da Conta Primária (Real) -->
+        <div id="primary-balance-box" class="bg-slate-800/80 border border-slate-700/80 rounded-lg px-3 py-1 text-xs hidden flex-col justify-center">
+          <div class="flex items-center gap-1 text-[10px] text-slate-400">
+            <span>Real:</span>
+            <span id="primary-acc-id" class="font-mono text-emerald-300">...</span>
+          </div>
+          <span id="primary-balance" class="font-mono font-bold text-emerald-400 text-xs">$0.00</span>
+        </div>
+
+        <!-- Saldo da Conta Secundária (Escudo Demo) -->
+        <div id="secondary-balance-box" class="bg-slate-800/80 border border-slate-700/80 rounded-lg px-3 py-1 text-xs hidden flex-col justify-center">
+          <div class="flex items-center gap-1 text-[10px] text-slate-400">
+            <span>Escudo:</span>
+            <span id="secondary-acc-id" class="font-mono text-amber-300">...</span>
+          </div>
+          <span id="secondary-balance" class="font-mono font-bold text-amber-400 text-xs">$0.00</span>
+        </div>
+
+        <!-- Botão Sincronizar Saldos Deriv -->
+        <button id="btn-refresh-balances" onclick="refreshBalances()" title="Sincronizar saldos diretamente com a Deriv" class="p-1.5 rounded-lg font-semibold text-xs flex items-center justify-center transition shadow bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-slate-600 text-slate-300 hover:text-cyan-300">
+          <i data-lucide="refresh-cw" id="icon-refresh-balance" class="w-3.5 h-3.5"></i>
+        </button>
+
+        <!-- Badge Rate Limit API (Monitoramento Anti-Bloqueio) -->
+        <div id="rate-limit-badge" class="bg-slate-800/80 border border-slate-700/80 rounded-lg px-2.5 py-1.5 text-xs flex items-center gap-1.5">
+          <span class="text-slate-400">API:</span>
+          <span id="rate-limit-text" class="font-mono font-semibold text-emerald-400">OK</span>
+        </div>
+
+        <!-- Saldo em Tempo Real (Conta Operacional) -->
+        <div id="single-balance-box" class="bg-slate-800/80 border border-slate-700/80 rounded-lg px-3 py-1.5 text-xs flex items-center gap-2 min-w-[150px] justify-between">
+          <span class="text-slate-400">Saldo:</span>
+          <span id="account-balance" class="font-mono font-bold text-emerald-400 text-sm">$0.00 USD</span>
+        </div>
+
+        <!-- Badge de Status com Largura Fixa (Não deforma a barra) -->
+        <div id="bot-status-badge" class="bg-slate-800 border border-slate-700 text-slate-300 text-xs px-3 py-1.5 rounded-lg font-medium flex items-center gap-2 w-28 justify-center">
+          <span id="bot-status-dot" class="w-2 h-2 rounded-full bg-slate-500"></span>
+          <span id="bot-status-text" class="truncate">Parado</span>
+        </div>
+
+        <!-- Botão Histórico de Sessões -->
+        <button onclick="openSessionsModal()" title="Ver Histórico de Sessões Anteriores" class="px-3 py-1.5 rounded-lg font-semibold text-xs flex items-center justify-center gap-1.5 transition shadow bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-slate-600 text-slate-200">
+          <i data-lucide="archive" class="w-4 h-4 text-purple-400"></i>
+          <span>Sessões (<span id="sessions-count" class="font-mono text-purple-300">0</span>)</span>
+        </button>
+
+        <!-- Botão Nova Sessão -->
+        <button onclick="confirmStartNewSession()" title="Arquivar sessão atual e iniciar nova limpa" class="px-3 py-1.5 rounded-lg font-semibold text-xs flex items-center justify-center gap-1.5 transition shadow bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-slate-600 text-slate-200">
+          <i data-lucide="rotate-ccw" class="w-4 h-4 text-amber-400"></i>
+          <span>Nova Sessão</span>
+        </button>
+
+        <!-- Botão Configurações -->
+        <button onclick="openConfigModal()" title="Configurar Parâmetros de Estratégia e Risco" class="px-3 py-1.5 rounded-lg font-semibold text-xs flex items-center justify-center gap-1.5 transition shadow bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-slate-600 text-slate-200">
+          <i data-lucide="sliders" class="w-4 h-4 text-cyan-400"></i>
+          <span>Config</span>
+        </button>
+
+        <!-- Botão Iniciar / Pausar com Largura Fixa -->
+        <button id="btn-toggle" onclick="toggleBot()" class="w-32 py-1.5 rounded-lg font-semibold text-xs flex items-center justify-center gap-2 transition shadow-lg bg-emerald-600 hover:bg-emerald-500 text-white">
+          <i data-lucide="play" class="w-4 h-4"></i>
+          <span>Iniciar Robô</span>
+        </button>
+
+        <!-- Divisor -->
+        <div class="h-6 w-px bg-slate-800"></div>
+
+        <!-- Badge Usuário Logado & Logout -->
+        <div class="flex items-center gap-1.5 bg-slate-900 border border-slate-800 rounded-lg pl-2.5 pr-1 py-1">
+          <span class="flex items-center gap-1.5 text-xs text-slate-300">
+            <i data-lucide="user" class="w-3.5 h-3.5 text-cyan-400"></i>
+            <span id="header-user-name" class="font-bold text-slate-200">admin</span>
+          </span>
+          <button onclick="handleLogout()" title="Sair da Conta (Logout)" class="p-1 rounded-md text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition">
+            <i data-lucide="log-out" class="w-3.5 h-3.5"></i>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Content com Múltiplas Páginas -->
+    <main class="flex-1 p-4 sm:p-6 overflow-y-auto">
+
+      <!-- PÁGINA 1: DASHBOARD -->
+      <div id="page-dashboard" class="page-view space-y-6 max-w-7xl mx-auto">
 
     <!-- KPI Grid Superior -->
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -408,12 +483,541 @@
       </div>
 
     </div>
+    </div>
+    <!-- FIM DA PÁGINA 1: DASHBOARD -->
+
+
+    <!-- PÁGINA 2: ACCOUNTS -->
+    <div id="page-accounts" class="page-view hidden space-y-6 max-w-7xl mx-auto">
+      
+      <!-- Cabeçalho da Página Accounts -->
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-slate-800/80">
+        <div>
+          <h2 class="text-xl font-bold text-slate-100 flex items-center gap-2.5">
+            <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-cyan-500/20 to-emerald-500/20 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shadow-lg shadow-cyan-500/10">
+              <i data-lucide="wallet" class="w-5 h-5"></i>
+            </div>
+            <span>Gerenciamento de Contas Deriv</span>
+          </h2>
+          <p class="text-xs text-slate-400 mt-1">
+            Configure credenciais API, App ID e Tokens PAT criptografados para as contas Primária (Real) e Secundária (Escudo Virtual).
+          </p>
+        </div>
+        
+        <div class="flex items-center gap-2 flex-wrap">
+          <button onclick="refreshBalances()" title="Sincronizar saldos de ambas as contas na Deriv" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-slate-600 text-slate-200 transition shadow flex items-center gap-2">
+            <i data-lucide="refresh-cw" class="w-3.5 h-3.5 text-cyan-400"></i>
+            <span>Sincronizar Saldos</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Mensagem de Feedback Global de Contas -->
+      <div id="accounts-feedback-msg" class="text-xs font-semibold text-center py-2.5 px-4 rounded-xl hidden transition-all duration-200"></div>
+
+      <!-- Formulário de Contas: Grid de 2 Colunas -->
+      <form id="form-accounts" onsubmit="event.preventDefault(); saveAccountsConfig();" class="space-y-6">
+        
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          
+          <!-- CARD 1: CONTA PRIMÁRIA (REAL / OPERACIONAL) -->
+          <div class="bg-slate-900/90 border border-slate-800/90 rounded-2xl p-5 shadow-xl flex flex-col justify-between space-y-4">
+            
+            <!-- Topo do Card Primária -->
+            <div>
+              <div class="flex items-center justify-between pb-3 border-b border-slate-800/80">
+                <div class="flex items-center gap-2.5">
+                  <div class="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                    <i data-lucide="shield-check" class="w-4 h-4"></i>
+                  </div>
+                  <div>
+                    <h3 class="text-sm font-bold text-slate-100 flex items-center gap-2">
+                      Conta Primária
+                      <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-950/80 border border-emerald-500/40 text-emerald-300">REAL</span>
+                    </h3>
+                    <p class="text-[11px] text-slate-400">Execução oficial de operações e recuperação fracionada</p>
+                  </div>
+                </div>
+
+                <!-- Saldo da Primária em Tempo Real -->
+                <div class="text-right">
+                  <div class="text-[10px] text-slate-500 uppercase tracking-wider font-semibold">Saldo Atual</div>
+                  <div id="accounts-card-prim-balance" class="text-base font-extrabold text-emerald-400 font-mono">$0.00</div>
+                </div>
+              </div>
+
+              <!-- Campos de Configuração Primária -->
+              <div class="space-y-3.5 mt-4">
+                
+                <!-- Token PAT Primário com Botão Ocultar/Revelar -->
+                <div>
+                  <div class="flex items-center justify-between mb-1">
+                    <label class="text-xs font-medium text-slate-300 flex items-center gap-1.5">
+                      <i data-lucide="key" class="w-3.5 h-3.5 text-emerald-400"></i>
+                      <span>Token PAT Primário (Personal Access Token)</span>
+                    </label>
+                    <span class="text-[10px] text-slate-500 flex items-center gap-1">
+                      <i data-lucide="lock" class="w-3 h-3 text-slate-500"></i> Criptografado
+                    </span>
+                  </div>
+                  <div class="relative">
+                    <input 
+                      type="password" 
+                      id="cfg-prim-token" 
+                      placeholder="pat_a1b2c3d4e5f6..." 
+                      autocomplete="off"
+                      class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 pr-11 text-xs font-mono text-slate-100 placeholder-slate-600 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/40 transition" 
+                    />
+                    <button 
+                      type="button" 
+                      onclick="toggleInputVisibility('cfg-prim-token', this)" 
+                      title="Ocultar ou Revelar Token" 
+                      class="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-slate-400 hover:text-emerald-400 hover:bg-slate-800 transition"
+                    >
+                      <i data-lucide="eye" class="w-4 h-4"></i>
+                    </button>
+                  </div>
+                  <p class="text-[10px] text-slate-500 mt-1">Token de acesso gerado no painel da Deriv com escopos Read e Trade.</p>
+                </div>
+
+                <!-- App ID Primário com Botão Ocultar/Revelar -->
+                <div>
+                  <div class="flex items-center justify-between mb-1">
+                    <label class="text-xs font-medium text-slate-300 flex items-center gap-1.5">
+                      <i data-lucide="cpu" class="w-3.5 h-3.5 text-emerald-400"></i>
+                      <span>App ID da Deriv</span>
+                    </label>
+                    <span class="text-[10px] text-slate-500">Ex: 34... / 1089</span>
+                  </div>
+                  <div class="relative">
+                    <input 
+                      type="password" 
+                      id="cfg-prim-app-id" 
+                      placeholder="34789" 
+                      autocomplete="off"
+                      class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 pr-11 text-xs font-mono text-slate-100 placeholder-slate-600 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/40 transition" 
+                    />
+                    <button 
+                      type="button" 
+                      onclick="toggleInputVisibility('cfg-prim-app-id', this)" 
+                      title="Ocultar ou Revelar App ID" 
+                      class="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-slate-400 hover:text-emerald-400 hover:bg-slate-800 transition"
+                    >
+                      <i data-lucide="eye" class="w-4 h-4"></i>
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Seleção de Conta Deriv (Detectada na API) -->
+                <div>
+                  <div class="flex items-center justify-between mb-1">
+                    <label class="text-xs font-medium text-slate-300 flex items-center gap-1.5">
+                      <i data-lucide="badge-check" class="w-3.5 h-3.5 text-emerald-400"></i>
+                      <span>Conta Deriv Conectada</span>
+                    </label>
+                    <button 
+                      type="button" 
+                      onclick="detectAccounts('prim')" 
+                      class="text-xs text-cyan-400 hover:text-cyan-300 flex items-center gap-1 font-semibold hover:underline"
+                    >
+                      <i data-lucide="refresh-cw" class="w-3 h-3"></i>
+                      <span>Buscar Contas na Deriv</span>
+                    </button>
+                  </div>
+                  <select 
+                    id="cfg-prim-acc-select" 
+                    onchange="handleAccSelectChange('prim')" 
+                    class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs font-mono font-semibold text-emerald-300 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/40 cursor-pointer transition"
+                  >
+                    <option value="ROT92107168">ROT92107168 (REAL)</option>
+                    <option value="DOT93505571">DOT93505571 (DEMO)</option>
+                    <option value="custom">✏️ Outra conta (digitar manualmente)...</option>
+                  </select>
+                  <input 
+                    type="text" 
+                    id="cfg-prim-acc-id" 
+                    placeholder="Digite o ID da conta ex: CR123456 ou ROT..." 
+                    class="w-full mt-2 bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-xs font-mono text-slate-100 focus:outline-none focus:border-emerald-500 hidden" 
+                  />
+                </div>
+
+              </div>
+            </div>
+
+            <!-- Rodapé do Card Primária -->
+            <div class="pt-3 border-t border-slate-800/60 flex items-center justify-between text-[11px] text-slate-400">
+              <span class="flex items-center gap-1">
+                <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+                <span>ID Operacional:</span>
+                <strong id="accounts-page-primary-id" class="font-mono text-slate-200">ROT92107168</strong>
+              </span>
+              <span class="text-slate-500 font-mono">Conta Real Ativa</span>
+            </div>
+
+          </div>
+
+
+          <!-- CARD 2: CONTA SECUNDÁRIA (ESCUDO DEMO / VIRTUAL) -->
+          <div class="bg-slate-900/90 border border-slate-800/90 rounded-2xl p-5 shadow-xl flex flex-col justify-between space-y-4">
+            
+            <!-- Topo do Card Secundária -->
+            <div>
+              <div class="flex items-center justify-between pb-3 border-b border-slate-800/80">
+                <div class="flex items-center gap-2.5">
+                  <div class="w-8 h-8 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
+                    <i data-lucide="shield" class="w-4 h-4"></i>
+                  </div>
+                  <div>
+                    <h3 class="text-sm font-bold text-slate-100 flex items-center gap-2">
+                      Conta Secundária
+                      <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-950/80 border border-amber-500/40 text-amber-300">ESCUDO DEMO</span>
+                    </h3>
+                    <p class="text-[11px] text-slate-400">Conta virtual de proteção para absorver perdas no modo híbrido</p>
+                  </div>
+                </div>
+
+                <!-- Saldo da Secundária em Tempo Real -->
+                <div class="text-right">
+                  <div class="text-[10px] text-slate-500 uppercase tracking-wider font-semibold">Saldo Atual</div>
+                  <div id="accounts-card-sec-balance" class="text-base font-extrabold text-amber-400 font-mono">$0.00</div>
+                </div>
+              </div>
+
+              <!-- Campos de Configuração Secundária -->
+              <div class="space-y-3.5 mt-4">
+                
+                <!-- Token PAT Secundário com Botão Ocultar/Revelar -->
+                <div>
+                  <div class="flex items-center justify-between mb-1">
+                    <label class="text-xs font-medium text-slate-300 flex items-center gap-1.5">
+                      <i data-lucide="key" class="w-3.5 h-3.5 text-amber-400"></i>
+                      <span>Token PAT Secundário (Escudo Demo)</span>
+                    </label>
+                    <span class="text-[10px] text-slate-500 flex items-center gap-1">
+                      <i data-lucide="lock" class="w-3 h-3 text-slate-500"></i> Criptografado
+                    </span>
+                  </div>
+                  <div class="relative">
+                    <input 
+                      type="password" 
+                      id="cfg-sec-token" 
+                      placeholder="pat_a1b2c3d4e5f6..." 
+                      autocomplete="off"
+                      class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 pr-11 text-xs font-mono text-slate-100 placeholder-slate-600 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/40 transition" 
+                    />
+                    <button 
+                      type="button" 
+                      onclick="toggleInputVisibility('cfg-sec-token', this)" 
+                      title="Ocultar ou Revelar Token" 
+                      class="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-slate-400 hover:text-amber-400 hover:bg-slate-800 transition"
+                    >
+                      <i data-lucide="eye" class="w-4 h-4"></i>
+                    </button>
+                  </div>
+                  <p class="text-[10px] text-slate-500 mt-1">Pode ser o mesmo token da Deriv se ambas contas estiverem no mesmo login.</p>
+                </div>
+
+                <!-- App ID Secundário com Botão Ocultar/Revelar -->
+                <div>
+                  <div class="flex items-center justify-between mb-1">
+                    <label class="text-xs font-medium text-slate-300 flex items-center gap-1.5">
+                      <i data-lucide="cpu" class="w-3.5 h-3.5 text-amber-400"></i>
+                      <span>App ID da Deriv</span>
+                    </label>
+                    <span class="text-[10px] text-slate-500">Ex: 34... / 1089</span>
+                  </div>
+                  <div class="relative">
+                    <input 
+                      type="password" 
+                      id="cfg-sec-app-id" 
+                      placeholder="34789" 
+                      autocomplete="off"
+                      class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 pr-11 text-xs font-mono text-slate-100 placeholder-slate-600 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/40 transition" 
+                    />
+                    <button 
+                      type="button" 
+                      onclick="toggleInputVisibility('cfg-sec-app-id', this)" 
+                      title="Ocultar ou Revelar App ID" 
+                      class="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-slate-400 hover:text-amber-400 hover:bg-slate-800 transition"
+                    >
+                      <i data-lucide="eye" class="w-4 h-4"></i>
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Seleção de Conta Deriv Secundária (Detectada na API) -->
+                <div>
+                  <div class="flex items-center justify-between mb-1">
+                    <label class="text-xs font-medium text-slate-300 flex items-center gap-1.5">
+                      <i data-lucide="badge-check" class="w-3.5 h-3.5 text-amber-400"></i>
+                      <span>Conta Deriv Conectada</span>
+                    </label>
+                    <button 
+                      type="button" 
+                      onclick="detectAccounts('sec')" 
+                      class="text-xs text-amber-400 hover:text-amber-300 flex items-center gap-1 font-semibold hover:underline"
+                    >
+                      <i data-lucide="refresh-cw" class="w-3 h-3"></i>
+                      <span>Buscar Contas na Deriv</span>
+                    </button>
+                  </div>
+                  <select 
+                    id="cfg-sec-acc-select" 
+                    onchange="handleAccSelectChange('sec')" 
+                    class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs font-mono font-semibold text-amber-300 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/40 cursor-pointer transition"
+                  >
+                    <option value="DOT93505571">DOT93505571 (DEMO)</option>
+                    <option value="ROT92107168">ROT92107168 (REAL)</option>
+                    <option value="custom">✏️ Outra conta (digitar manualmente)...</option>
+                  </select>
+                  <input 
+                    type="text" 
+                    id="cfg-sec-acc-id" 
+                    placeholder="Digite o ID da conta ex: VRT123456 ou DOT..." 
+                    class="w-full mt-2 bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-xs font-mono text-slate-100 focus:outline-none focus:border-amber-500 hidden" 
+                  />
+                </div>
+
+              </div>
+            </div>
+
+            <!-- Rodapé do Card Secundária -->
+            <div class="pt-3 border-t border-slate-800/60 flex items-center justify-between text-[11px] text-slate-400">
+              <span class="flex items-center gap-1">
+                <span class="w-2 h-2 rounded-full bg-amber-400"></span>
+                <span>ID Escudo:</span>
+                <strong id="accounts-page-secondary-id" class="font-mono text-slate-200">DOT93505571</strong>
+              </span>
+              <span class="text-slate-500 font-mono">Conta Virtual Demo</span>
+            </div>
+
+          </div>
+
+        </div>
+
+        <!-- Barra Inferior de Ação: Salvar e Segurança -->
+        <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-lg">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 shrink-0">
+              <i data-lucide="shield-alert" class="w-5 h-5"></i>
+            </div>
+            <div>
+              <div class="text-xs font-bold text-slate-200">Armazenamento Local Criptografado</div>
+              <div class="text-[11px] text-slate-400">Seus Tokens PAT e App IDs ficam salvos de forma protegida no banco de dados SQLite local exclusivo da sua conta.</div>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-3 w-full sm:w-auto justify-end">
+            <button 
+              type="button" 
+              onclick="loadAccountsConfig(true)" 
+              class="px-4 py-2.5 rounded-xl text-xs font-semibold text-slate-400 hover:text-slate-200 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 transition"
+            >
+              Descartar / Recarregar
+            </button>
+            <button 
+              type="submit" 
+              id="btn-save-accounts" 
+              class="px-6 py-2.5 rounded-xl text-xs font-bold bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-slate-950 flex items-center justify-center gap-2 shadow-lg shadow-cyan-500/20 transition transform active:scale-95"
+            >
+              <i data-lucide="check-circle-2" class="w-4 h-4 text-slate-950"></i>
+              <span>Salvar Configurações de Contas</span>
+            </button>
+          </div>
+        </div>
+
+      </form>
+
+      <!-- Card Informativo com Instruções Passo a Passo -->
+      <div class="bg-slate-900/40 border border-slate-800/60 rounded-2xl p-5 space-y-3">
+        <h4 class="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+          <i data-lucide="help-circle" class="w-4 h-4 text-cyan-400"></i>
+          Como obter seu Token PAT e App ID na Deriv
+        </h4>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs text-slate-400">
+          <div class="bg-slate-950/60 p-3 rounded-xl border border-slate-800/60">
+            <div class="font-bold text-slate-200 mb-1">1. Gerar Token PAT</div>
+            <p class="text-[11px] leading-relaxed">Acesse sua conta Deriv em <em>Configurações da Conta &gt; Segurança &gt; Tokens de API</em>. Crie um token com os escopos <strong>Read</strong> e <strong>Trade</strong>.</p>
+          </div>
+          <div class="bg-slate-950/60 p-3 rounded-xl border border-slate-800/60">
+            <div class="font-bold text-slate-200 mb-1">2. Informar App ID</div>
+            <p class="text-[11px] leading-relaxed">Você pode usar o seu App ID registrado na Deriv ou o App ID padrão do sistema. O App ID conecta a aplicação ao ambiente WebSocket correto.</p>
+          </div>
+          <div class="bg-slate-950/60 p-3 rounded-xl border border-slate-800/60">
+            <div class="font-bold text-slate-200 mb-1">3. Buscar Contas</div>
+            <p class="text-[11px] leading-relaxed">Clique em <strong>Buscar Contas na Deriv</strong>. O sistema listará automaticamente todas as suas contas Real e Virtual para seleção imediata.</p>
+          </div>
+        </div>
+      </div>
+
+    </div>
+    <!-- FIM DA PÁGINA 2: ACCOUNTS -->
+
+
+    <!-- PÁGINA 3: SESSÕES -->
+    <div id="page-sessions" class="page-view hidden space-y-6 max-w-7xl mx-auto">
+      
+      <!-- Cabeçalho da Página Sessões -->
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-slate-800/80">
+        <div>
+          <h2 class="text-xl font-bold text-slate-100 flex items-center gap-2.5">
+            <div class="w-8 h-8 rounded-lg bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400">
+              <i data-lucide="history" class="w-4 h-4"></i>
+            </div>
+            <span>Histórico de Sessões</span>
+          </h2>
+          <p class="text-xs text-slate-400 mt-1">
+            Registro detalhado dos ciclos de operação, metas atingidas, controle de drawdown e auditoria de trades.
+          </p>
+        </div>
+        
+        <div class="flex items-center gap-2">
+          <button onclick="confirmStartNewSession()" class="px-3.5 py-1.5 rounded-lg font-semibold text-xs flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 transition shadow">
+            <i data-lucide="rotate-ccw" class="w-3.5 h-3.5 text-amber-400"></i>
+            <span>Nova Sessão</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Grid de Resumo das Sessões -->
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <!-- Total de Sessões -->
+        <div class="bg-slate-900/80 border border-slate-800/80 rounded-2xl p-5 shadow-lg flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between text-slate-400 text-xs mb-2">
+              <span class="font-bold uppercase tracking-wider text-[11px]">SESSÕES ARQUIVADAS</span>
+              <i data-lucide="archive" class="w-4 h-4 text-purple-400"></i>
+            </div>
+            <div id="sessions-page-total" class="text-3xl font-extrabold text-purple-400 font-mono">0</div>
+          </div>
+          <p class="text-[11px] text-slate-500 mt-2">Histórico persistido no banco local</p>
+        </div>
+
+        <!-- Sessão Ativa Atual -->
+        <div class="bg-slate-900/80 border border-slate-800/80 rounded-2xl p-5 shadow-lg flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between text-slate-400 text-xs mb-2">
+              <span class="font-bold uppercase tracking-wider text-[11px]">SESSÃO ATIVA</span>
+              <i data-lucide="activity" class="w-4 h-4 text-cyan-400"></i>
+            </div>
+            <div id="sessions-page-active" class="text-3xl font-extrabold text-cyan-400 font-mono">#1</div>
+          </div>
+          <p class="text-[11px] text-slate-500 mt-2">Recebendo novos ticks e ordens</p>
+        </div>
+
+        <!-- Acesso ao Modal de Auditoria -->
+        <div class="bg-slate-900/80 border border-slate-800/80 rounded-2xl p-5 shadow-lg flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between text-slate-400 text-xs mb-2">
+              <span class="font-bold uppercase tracking-wider text-[11px]">MODAL DE CONSULTA</span>
+              <i data-lucide="file-spreadsheet" class="w-4 h-4 text-emerald-400"></i>
+            </div>
+            <p class="text-xs text-slate-400 mt-1">Abra o visualizador completo de sessões gravadas:</p>
+          </div>
+          <button onclick="openSessionsModal()" class="w-full mt-3 py-2 px-3 rounded-xl bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/30 text-purple-300 text-xs font-semibold transition flex items-center justify-center gap-2">
+            <i data-lucide="archive" class="w-3.5 h-3.5"></i>
+            <span>Ver Detalhes das Sessões</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Placeholder Elegante / Pronto para Próximo Passo -->
+      <div class="bg-slate-900/50 border border-dashed border-slate-800 rounded-2xl p-8 sm:p-12 text-center">
+        <div class="w-14 h-14 mx-auto mb-4 rounded-2xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400 shadow-lg shadow-purple-500/5">
+          <i data-lucide="history" class="w-7 h-7"></i>
+        </div>
+        <h3 class="text-lg font-bold text-slate-200">Página de Sessões Pronta</h3>
+        <p class="text-xs text-slate-400 max-w-md mx-auto mt-2 leading-relaxed">
+          O menu lateral e a rota desta página já estão conectados. No próximo passo, me diga como deseja organizar a tabela de sessões, filtros por período, exportação de dados e métricas!
+        </p>
+      </div>
+
+    </div>
+    <!-- FIM DA PÁGINA 3: SESSÕES -->
+
+
+    <!-- PÁGINA 4: DOCUMENTAÇÃO -->
+    <div id="page-docs" class="page-view hidden space-y-6 max-w-7xl mx-auto">
+      
+      <!-- Cabeçalho da Página Documentação -->
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-slate-800/80">
+        <div>
+          <h2 class="text-xl font-bold text-slate-100 flex items-center gap-2.5">
+            <div class="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+              <i data-lucide="book-open" class="w-4 h-4"></i>
+            </div>
+            <span>Documentação do Sistema</span>
+          </h2>
+          <p class="text-xs text-slate-400 mt-1">
+            Manuais técnicos, arquitetura de risco, guias da estratégia Accumulator e referência da API Deriv.
+          </p>
+        </div>
+        
+        <div class="flex items-center gap-2">
+          <span class="px-3 py-1.5 rounded-lg text-xs font-mono font-medium bg-slate-900 border border-slate-800 text-slate-300">
+            Deriv Quant v2.0
+          </span>
+        </div>
+      </div>
+
+      <!-- Grid de Tópicos de Documentação -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <!-- Tópico 1 -->
+        <div class="bg-slate-900/80 border border-slate-800/80 rounded-2xl p-5 shadow-lg">
+          <div class="w-10 h-10 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 mb-3">
+            <i data-lucide="trending-up" class="w-5 h-5"></i>
+          </div>
+          <h3 class="text-sm font-bold text-slate-200">Estratégia Accumulator</h3>
+          <p class="text-xs text-slate-400 mt-1.5 leading-relaxed">
+            Mecanismo de crescimento com barreira de ticks, cash out programado e adaptação automática de volatilidade.
+          </p>
+        </div>
+
+        <!-- Tópico 2 -->
+        <div class="bg-slate-900/80 border border-slate-800/80 rounded-2xl p-5 shadow-lg">
+          <div class="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 mb-3">
+            <i data-lucide="shield" class="w-5 h-5"></i>
+          </div>
+          <h3 class="text-sm font-bold text-slate-200">Escudo Demo & Risco</h3>
+          <p class="text-xs text-slate-400 mt-1.5 leading-relaxed">
+            Uso sincronizado de conta demo para amortecer sequências negativas antes de operar na conta primária.
+          </p>
+        </div>
+
+        <!-- Tópico 3 -->
+        <div class="bg-slate-900/80 border border-slate-800/80 rounded-2xl p-5 shadow-lg">
+          <div class="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 mb-3">
+            <i data-lucide="cpu" class="w-5 h-5"></i>
+          </div>
+          <h3 class="text-sm font-bold text-slate-200">WebSocket & Zero-Polling</h3>
+          <p class="text-xs text-slate-400 mt-1.5 leading-relaxed">
+            Arquitetura reativa conectada diretamente à API Deriv v2 com proteção anti rate-limit e push em tempo real.
+          </p>
+        </div>
+      </div>
+
+      <!-- Placeholder Elegante / Pronto para Próximo Passo -->
+      <div class="bg-slate-900/50 border border-dashed border-slate-800 rounded-2xl p-8 sm:p-12 text-center">
+        <div class="w-14 h-14 mx-auto mb-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 shadow-lg shadow-emerald-500/5">
+          <i data-lucide="book-open" class="w-7 h-7"></i>
+        </div>
+        <h3 class="text-lg font-bold text-slate-200">Página de Documentação Pronta</h3>
+        <p class="text-xs text-slate-400 max-w-md mx-auto mt-2 leading-relaxed">
+          O menu lateral e a rota desta página já estão conectados. No próximo passo, me diga quais tópicos, links, arquivos markdown ou tutoriais você deseja que sejam exibidos aqui!
+        </p>
+      </div>
+
+    </div>
+    <!-- FIM DA PÁGINA 4: DOCUMENTAÇÃO -->
 
   </main>
 
   <footer class="border-t border-slate-800/60 py-2.5 text-center text-[11px] text-slate-500">
     Deriv Quant 2.0 • WebSocket Event-Driven • Sem Polling
   </footer>
+
+  </div>
+  <!-- FIM DA ÁREA PRINCIPAL DE CONTEÚDO -->
 
   <!-- Modal de Configurações -->
   <div id="modal-config" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4 hidden">
@@ -680,76 +1284,22 @@
             </div>
           </div>
 
-          <!-- Credenciais das Contas -->
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-            <!-- Conta Primária (Real) -->
-            <div class="bg-slate-950/70 border border-slate-800/80 rounded-xl p-3 space-y-2">
-              <div class="flex items-center justify-between">
-                <span class="text-[11px] font-bold text-emerald-400 flex items-center gap-1">
-                  <i data-lucide="wallet" class="w-3 h-3"></i>
-                  Conta Primária (Real)
-                </span>
-                <button type="button" onclick="detectAccounts('prim')" class="text-[9px] text-cyan-400 hover:text-cyan-300 flex items-center gap-1 font-normal underline">
-                  <i data-lucide="refresh-cw" class="w-2.5 h-2.5"></i> Buscar Contas
-                </button>
+          <!-- Atalho para Configuração de Contas -->
+          <div class="bg-slate-950/70 border border-slate-800/80 rounded-xl p-3 flex items-center justify-between gap-3">
+            <div class="flex items-center gap-2.5">
+              <div class="w-8 h-8 rounded-lg bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 shrink-0">
+                <i data-lucide="wallet" class="w-4 h-4"></i>
               </div>
               <div>
-                <label class="block text-[10px] text-slate-500 mb-0.5">Token PAT Primário</label>
-                <input type="password" id="cfg-prim-token" placeholder="pat_..." class="w-full bg-slate-900 border border-slate-800 rounded px-2 py-1 text-xs font-mono text-slate-200 focus:outline-none focus:border-emerald-500" />
-              </div>
-              <div class="grid grid-cols-2 gap-2">
-                <div>
-                  <label class="block text-[10px] text-slate-500 mb-0.5">Conta Deriv</label>
-                  <select id="cfg-prim-acc-select" onchange="handleAccSelectChange('prim')" class="w-full bg-slate-900 border border-slate-800 rounded px-2 py-1 text-xs font-mono font-semibold text-emerald-300 focus:outline-none focus:border-emerald-500 cursor-pointer">
-                    <option value="ROT92107168">ROT92107168 (REAL)</option>
-                    <option value="DOT93505571">DOT93505571 (DEMO)</option>
-                    <option value="custom">✏️ Outra...</option>
-                  </select>
-                  <input type="text" id="cfg-prim-acc-id" placeholder="ROT..." class="w-full mt-1 bg-slate-900 border border-slate-800 rounded px-2 py-1 text-xs font-mono text-slate-200 focus:outline-none focus:border-emerald-500 hidden" />
-                </div>
-                <div>
-                  <label class="block text-[10px] text-slate-500 mb-0.5">App ID</label>
-                  <input type="text" id="cfg-prim-app-id" placeholder="34X..." class="w-full bg-slate-900 border border-slate-800 rounded px-2 py-1 text-xs font-mono text-slate-200 focus:outline-none focus:border-emerald-500" />
-                </div>
+                <div class="text-xs font-bold text-slate-200">Gerenciamento de Contas e Tokens PAT</div>
+                <div class="text-[10px] text-slate-400">Tokens, App IDs e seleção de contas Deriv são configurados na página <strong>Accounts</strong>.</div>
               </div>
             </div>
-
-            <!-- Conta Secundária (Escudo Demo) -->
-            <div class="bg-slate-950/70 border border-slate-800/80 rounded-xl p-3 space-y-2">
-              <div class="flex items-center justify-between">
-                <span class="text-[11px] font-bold text-amber-400 flex items-center gap-1">
-                  <i data-lucide="shield-check" class="w-3 h-3"></i>
-                  Conta Secundária (Escudo Demo)
-                </span>
-                <button type="button" onclick="detectAccounts('sec')" class="text-[9px] text-amber-400 hover:text-amber-300 flex items-center gap-1 font-normal underline">
-                  <i data-lucide="refresh-cw" class="w-2.5 h-2.5"></i> Buscar Contas
-                </button>
-              </div>
-              <div>
-                <label class="block text-[10px] text-slate-500 mb-0.5">Token PAT Secundário</label>
-                <input type="password" id="cfg-sec-token" placeholder="pat_..." class="w-full bg-slate-900 border border-slate-800 rounded px-2 py-1 text-xs font-mono text-slate-200 focus:outline-none focus:border-amber-500" />
-              </div>
-              <div class="grid grid-cols-2 gap-2">
-                <div>
-                  <label class="block text-[10px] text-slate-500 mb-0.5">Conta Deriv</label>
-                  <select id="cfg-sec-acc-select" onchange="handleAccSelectChange('sec')" class="w-full bg-slate-900 border border-slate-800 rounded px-2 py-1 text-xs font-mono font-semibold text-amber-300 focus:outline-none focus:border-amber-500 cursor-pointer">
-                    <option value="DOT93505571">DOT93505571 (DEMO)</option>
-                    <option value="ROT92107168">ROT92107168 (REAL)</option>
-                    <option value="custom">✏️ Outra...</option>
-                  </select>
-                  <input type="text" id="cfg-sec-acc-id" placeholder="DOT..." class="w-full mt-1 bg-slate-900 border border-slate-800 rounded px-2 py-1 text-xs font-mono text-slate-200 focus:outline-none focus:border-amber-500 hidden" />
-                </div>
-                <div>
-                  <label class="block text-[10px] text-slate-500 mb-0.5">App ID</label>
-                  <input type="text" id="cfg-sec-app-id" placeholder="34X..." class="w-full bg-slate-900 border border-slate-800 rounded px-2 py-1 text-xs font-mono text-slate-200 focus:outline-none focus:border-amber-500" />
-                </div>
-              </div>
-            </div>
+            <button type="button" onclick="closeConfigModal(); switchPage('accounts');" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 border border-slate-700 text-cyan-300 transition shrink-0 flex items-center gap-1.5">
+              <span>Ir para Accounts</span>
+              <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>
+            </button>
           </div>
-
-          <p class="text-[10px] text-slate-500 leading-relaxed">
-            🛡️ <strong>Lógica Escudo:</strong> O robô opera na conta secundária virtual absorvendo a variância. Quando atinge o número de derrotas estipulado, o próximo trade virgem é disparado cirurgicamente na conta real!
-          </p>
         </div>
 
         <!-- Opção de Iniciar Nova Sessão ao Salvar -->
@@ -1396,9 +1946,11 @@
       const appId = document.getElementById(`cfg-${type}-app-id`).value.trim();
       if (!token || !appId) {
         showFeedback("Preencha o Token PAT e o App ID para detectar as contas na Deriv.", true);
+        showAccountsFeedback("Preencha o Token PAT e o App ID para detectar as contas na Deriv.", true);
         return;
       }
       showFeedback(`Buscando contas na Deriv para ${type === 'prim' ? 'Conta Primária' : 'Conta Secundária'}...`);
+      showAccountsFeedback(`Buscando contas na Deriv para ${type === 'prim' ? 'Conta Primária' : 'Conta Secundária'}...`);
       try {
         const res = await fetch("/api/accounts/list", {
           method: "POST",
@@ -1416,11 +1968,15 @@
           const curVal = document.getElementById(`cfg-${type}-acc-id`).value;
           renderAccountOptions(type, data.accounts, curVal);
           showFeedback("Contas da Deriv detectadas com sucesso!");
+          showAccountsFeedback("Contas da Deriv detectadas com sucesso!");
+          syncAccountsPageInfo();
         } else {
           showFeedback(data.message || "Nenhuma conta retornada pela Deriv.", true);
+          showAccountsFeedback(data.message || "Nenhuma conta retornada pela Deriv.", true);
         }
       } catch (err) {
         showFeedback("Erro na comunicação com a API Deriv: " + err, true);
+        showAccountsFeedback("Erro na comunicação com a API Deriv: " + err, true);
       }
     }
 
@@ -1929,9 +2485,311 @@
       }
     }
 
+    // Navegação Sidebar e Gestão de Páginas
+    const PAGE_TITLES = {
+      dashboard: "Dashboard",
+      accounts: "Accounts",
+      sessions: "Sessões",
+      docs: "Documentação"
+    };
+
+    function switchPage(pageId) {
+      const validPages = ["dashboard", "accounts", "sessions", "docs"];
+      if (!validPages.includes(pageId)) pageId = "dashboard";
+
+      validPages.forEach((p) => {
+        const viewEl = document.getElementById(`page-${p}`);
+        const navBtn = document.getElementById(`nav-item-${p}`);
+
+        if (viewEl) {
+          if (p === pageId) {
+            viewEl.classList.remove("hidden");
+          } else {
+            viewEl.classList.add("hidden");
+          }
+        }
+
+        if (navBtn) {
+          if (p === pageId) {
+            navBtn.className = "nav-item w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 shadow-sm shadow-cyan-500/5";
+          } else {
+            navBtn.className = "nav-item w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-medium transition text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 border border-transparent";
+          }
+        }
+      });
+
+      // Atualiza o título no Header
+      const headerTitle = document.getElementById("header-section-title");
+      if (headerTitle) {
+        headerTitle.textContent = PAGE_TITLES[pageId] || "Dashboard";
+      }
+
+      // Sincroniza dados da página Accounts se estiver aberta
+      if (pageId === "accounts") {
+        syncAccountsPageInfo();
+      }
+
+      // Sincroniza dados da página Sessões se estiver aberta
+      if (pageId === "sessions") {
+        syncSessionsPageInfo();
+      }
+
+      // Fecha sidebar no mobile
+      closeSidebarMobile();
+
+      // Atualiza hash da URL sem causar pulo de scroll
+      if (window.location.hash !== `#${pageId}`) {
+        history.replaceState(null, "", `#${pageId}`);
+      }
+
+      // Renderiza ícones Lucide
+      if (window.lucide) {
+        lucide.createIcons();
+      }
+    }
+
+    // Controle de Visibilidade de Senha / Token PAT (Ocultar e Revelar)
+    function toggleInputVisibility(inputId, btnEl) {
+      const input = document.getElementById(inputId);
+      if (!input) return;
+      const isPassword = input.type === "password";
+      input.type = isPassword ? "text" : "password";
+      
+      if (btnEl) {
+        btnEl.innerHTML = isPassword 
+          ? '<i data-lucide="eye-off" class="w-4 h-4 text-cyan-400"></i>'
+          : '<i data-lucide="eye" class="w-4 h-4 text-slate-400"></i>';
+        btnEl.title = isPassword ? "Ocultar" : "Revelar";
+        lucide.createIcons();
+      }
+    }
+
+    function showAccountsFeedback(msg, isError = false) {
+      const el = document.getElementById("accounts-feedback-msg");
+      if (!el) return;
+      el.innerText = msg;
+      el.className = `text-xs font-semibold text-center py-2.5 px-4 rounded-xl ${
+        isError 
+          ? 'bg-rose-950/80 text-rose-300 border border-rose-500/40 shadow-lg shadow-rose-950/40' 
+          : 'bg-emerald-950/80 text-emerald-300 border border-emerald-500/40 shadow-lg shadow-emerald-950/40'
+      }`;
+      el.classList.remove("hidden");
+    }
+
+    async function saveAccountsConfig() {
+      const btn = document.getElementById("btn-save-accounts");
+      const origHtml = btn ? btn.innerHTML : "";
+
+      const primSelect = document.getElementById("cfg-prim-acc-select");
+      const primInput = document.getElementById("cfg-prim-acc-id");
+      const primaryAccId = (primSelect && primSelect.value !== "custom") ? primSelect.value : (primInput ? primInput.value.trim() : "");
+
+      const secSelect = document.getElementById("cfg-sec-acc-select");
+      const secInput = document.getElementById("cfg-sec-acc-id");
+      const secondaryAccId = (secSelect && secSelect.value !== "custom") ? secSelect.value : (secInput ? secInput.value.trim() : "");
+
+      const primToken = document.getElementById("cfg-prim-token")?.value.trim() || "";
+      const primAppId = document.getElementById("cfg-prim-app-id")?.value.trim() || "";
+      const secToken = document.getElementById("cfg-sec-token")?.value.trim() || "";
+      const secAppId = document.getElementById("cfg-sec-app-id")?.value.trim() || "";
+
+      if (!primToken) {
+        showAccountsFeedback("O Token PAT Primário é obrigatório para autenticar a conta com a Deriv.", true);
+        return;
+      }
+
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i data-lucide="loader" class="w-4 h-4 animate-spin text-slate-950"></i><span>Salvando Contas...</span>';
+        lucide.createIcons();
+      }
+
+      const payload = {
+        primary_token: primToken,
+        primary_account_id: primaryAccId,
+        primary_app_id: primAppId,
+        secondary_token: secToken,
+        secondary_account_id: secondaryAccId,
+        secondary_app_id: secAppId
+      };
+
+      try {
+        const res = await fetch("/api/config", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        const text = await res.text();
+        let data;
+        try {
+          data = JSON.parse(text);
+        } catch (e) {
+          data = { status: "error", message: text || "Resposta inesperada da API." };
+        }
+
+        if (res.ok && data.status === "success") {
+          currentConfig = data.config;
+          showAccountsFeedback("Configurações das contas salvas e ativadas com sucesso!");
+          logTerminal("Credenciais das contas salvas e aplicadas.", "emerald");
+          await refreshBalances();
+          syncAccountsPageInfo();
+        } else {
+          showAccountsFeedback(data.message || "Erro ao salvar credenciais das contas.", true);
+        }
+      } catch (err) {
+        showAccountsFeedback("Erro na comunicação com o servidor: " + err, true);
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = origHtml;
+          lucide.createIcons();
+        }
+      }
+    }
+
+    async function loadAccountsConfig(isManual = false) {
+      try {
+        const res = await fetch("/api/config");
+        if (res.ok) {
+          const body = await res.json();
+          currentConfig = body.config || body;
+
+          if (currentConfig) {
+            if (currentConfig.primary_token !== undefined) {
+              const el = document.getElementById("cfg-prim-token");
+              if (el) el.value = currentConfig.primary_token;
+            }
+            if (currentConfig.primary_app_id !== undefined) {
+              const el = document.getElementById("cfg-prim-app-id");
+              if (el) el.value = currentConfig.primary_app_id;
+            }
+            if (currentConfig.secondary_token !== undefined) {
+              const el = document.getElementById("cfg-sec-token");
+              if (el) el.value = currentConfig.secondary_token;
+            }
+            if (currentConfig.secondary_app_id !== undefined) {
+              const el = document.getElementById("cfg-sec-app-id");
+              if (el) el.value = currentConfig.secondary_app_id;
+            }
+
+            const primAccs = (currentConfig.primary_available_accounts && currentConfig.primary_available_accounts.length > 0)
+              ? currentConfig.primary_available_accounts
+              : [
+                  { account_id: "ROT92107168", account_type: "real" },
+                  { account_id: "DOT93505571", account_type: "demo" }
+                ];
+            renderAccountOptions("prim", primAccs, currentConfig.primary_account_id || "ROT92107168");
+
+            const secAccs = (currentConfig.secondary_available_accounts && currentConfig.secondary_available_accounts.length > 0)
+              ? currentConfig.secondary_available_accounts
+              : [
+                  { account_id: "DOT93505571", account_type: "demo" },
+                  { account_id: "ROT92107168", account_type: "real" }
+                ];
+            renderAccountOptions("sec", secAccs, currentConfig.secondary_account_id || "DOT93505571");
+
+            syncAccountsPageInfo();
+            if (isManual) {
+              showAccountsFeedback("Dados de contas recarregados com sucesso!");
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Erro ao carregar dados de contas:", err);
+        if (isManual) {
+          showAccountsFeedback("Erro ao carregar configurações de contas: " + err, true);
+        }
+      }
+    }
+
+    function syncAccountsPageInfo() {
+      const primId = document.getElementById("primary-acc-id")?.innerText;
+      const secId = document.getElementById("secondary-acc-id")?.innerText;
+      const activeId = document.getElementById("account-id")?.innerText;
+      const primBal = document.getElementById("primary-balance")?.innerText || "$0.00";
+      const secBal = document.getElementById("secondary-balance")?.innerText || "$0.00";
+      const activeBal = document.getElementById("account-balance")?.innerText || "$0.00 USD";
+
+      const pEl = document.getElementById("accounts-page-primary-id");
+      const sEl = document.getElementById("accounts-page-secondary-id");
+      const cardPrimBal = document.getElementById("accounts-card-prim-balance");
+      const cardSecBal = document.getElementById("accounts-card-sec-balance");
+
+      if (pEl) {
+        if (primId && primId !== "...") {
+          pEl.innerText = primId;
+        } else if (activeId) {
+          pEl.innerText = activeId;
+        }
+      }
+
+      if (sEl) {
+        if (secId && secId !== "...") {
+          sEl.innerText = secId;
+        } else {
+          sEl.innerText = "DOT93505571";
+        }
+      }
+
+      if (cardPrimBal) {
+        cardPrimBal.innerText = (primBal && primBal !== "$0.00") ? primBal : activeBal.replace(" USD", "");
+      }
+      if (cardSecBal) {
+        cardSecBal.innerText = (secBal && secBal !== "$0.00") ? secBal : "$0.00";
+      }
+    }
+
+    function syncSessionsPageInfo() {
+      const count = document.getElementById("sessions-count")?.innerText || "0";
+      const totalEl = document.getElementById("sessions-page-total");
+      if (totalEl) totalEl.innerText = count;
+
+      const activeBadge = document.getElementById("active-session-badge")?.innerText || "#1";
+      const activeEl = document.getElementById("sessions-page-active");
+      if (activeEl) activeEl.innerText = activeBadge;
+    }
+
+    function toggleSidebar() {
+      const sidebar = document.getElementById("app-sidebar");
+      const backdrop = document.getElementById("sidebar-backdrop");
+      if (sidebar) {
+        sidebar.classList.toggle("-translate-x-full");
+      }
+      if (backdrop) {
+        backdrop.classList.toggle("hidden");
+      }
+    }
+
+    function closeSidebarMobile() {
+      const sidebar = document.getElementById("app-sidebar");
+      const backdrop = document.getElementById("sidebar-backdrop");
+      if (sidebar && window.innerWidth < 768) {
+        sidebar.classList.add("-translate-x-full");
+      }
+      if (backdrop) {
+        backdrop.classList.add("hidden");
+      }
+    }
+
     window.onload = () => {
       lucide.createIcons();
       initWebSocket();
+      loadAccountsConfig();
+
+      // Navegação inicial respeitando URL hash
+      const currentHash = (window.location.hash || "").replace("#", "");
+      if (["dashboard", "accounts", "sessions", "docs"].includes(currentHash)) {
+        switchPage(currentHash);
+      } else {
+        switchPage("dashboard");
+      }
+
+      window.addEventListener("hashchange", () => {
+        const hash = (window.location.hash || "").replace("#", "");
+        if (["dashboard", "accounts", "sessions", "docs"].includes(hash)) {
+          switchPage(hash);
+        }
+      });
     };
   </script>
 </body>
