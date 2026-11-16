@@ -1527,8 +1527,13 @@ async def websocket_endpoint(ws: WebSocket):
 
 
 if __name__ == "__main__":
-    print("\n" + "=" * 70)
-    print(" INICIANDO DASHBOARD DERIV QUANT 2.0 (EVENT-DRIVEN)")
-    print(" Acesse no seu navegador: http://localhost:8000")
-    print("=" * 70 + "\n")
-    uvicorn.run("web_server:app", host="0.0.0.0", port=8000, reload=False, app_dir="src")
+    try:
+        print("\n" + "=" * 70)
+        print(" INICIANDO DASHBOARD DERIV QUANT 2.0 (EVENT-DRIVEN)")
+        print(" Acesse no seu navegador: http://localhost:8000")
+        print("=" * 70 + "\n")
+        uvicorn.run("web_server:app", host="0.0.0.0", port=8000, reload=False, app_dir="src")
+    except Exception as e:
+        logger.exception(f"Erro fatal no Uvicorn: {e}")
+        import traceback
+        traceback.print_exc()
