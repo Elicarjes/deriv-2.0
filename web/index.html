@@ -548,17 +548,18 @@
           <div class="bg-slate-950/60 border border-slate-800/80 rounded-xl p-3 space-y-2">
             <label class="block text-[11px] text-slate-300 font-semibold flex items-center gap-1.5">
               <i data-lucide="git-branch" class="w-3.5 h-3.5 text-cyan-400"></i>
-              Comportamento se tomar LOSS na Primária:
+              Comportamento se tomar LOSS:
             </label>
             <select id="cfg-primary-loss-action" onchange="toggleMartingaleFields()" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs font-mono font-semibold text-slate-200 focus:outline-none focus:border-cyan-500 cursor-pointer">
-              <option value="return_to_shield">🛡️ Tiro Único Conservador: Volta imediatamente ao Escudo Demo</option>
-              <option value="recovery_martingale">🔁 Recuperação / Martingale: Tenta recuperar na Primária antes de voltar</option>
+              <option value="return_to_shield">🛡️ Tiro Único Conservador: Mantém stake base (ou volta ao Escudo Demo)</option>
+              <option value="fractional_martingale">📊 Martingale Parcelado: Recupera a perda diluída em X parcelas suaves</option>
+              <option value="recovery_martingale">🔁 Martingale Clássico: Multiplica a stake fixa (ex: 2.0x, 2.5x) por X tentativas</option>
             </select>
 
-            <!-- Painel de Martingale na Primária -->
-            <div id="cfg-martingale-panel" class="hidden grid grid-cols-2 gap-3 pt-1">
+            <!-- Painel de Martingale Clássico Multiplicador -->
+            <div id="cfg-martingale-panel" class="hidden grid grid-cols-2 gap-3 pt-1 border-t border-slate-800/60">
               <div>
-                <label class="block text-[10px] text-slate-400 mb-0.5">Tentativas de Gale na Primária</label>
+                <label class="block text-[10px] text-slate-400 mb-0.5">Tentativas de Gale</label>
                 <select id="cfg-primary-max-steps" class="w-full bg-slate-900 border border-slate-800 rounded px-2.5 py-1.5 text-xs font-mono font-semibold text-cyan-300 focus:outline-none focus:border-cyan-500 cursor-pointer">
                   <option value="1">1 tentativa (Gale 1)</option>
                   <option value="2">2 tentativas (Gale 2)</option>
@@ -572,6 +573,35 @@
                   <span class="absolute right-2.5 top-1.5 text-[10px] text-slate-500 font-mono">x</span>
                 </div>
               </div>
+            </div>
+
+            <!-- Painel de Martingale Parcelado Inteligente -->
+            <div id="cfg-fractional-panel" class="hidden space-y-2 pt-1 border-t border-slate-800/60">
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                <div>
+                  <label class="block text-[10px] text-slate-400 mb-0.5">Parcelas de Recuperação</label>
+                  <select id="cfg-fractional-installments" class="w-full bg-slate-900 border border-slate-800 rounded px-2.5 py-1.5 text-xs font-mono font-semibold text-cyan-300 focus:outline-none focus:border-cyan-500 cursor-pointer">
+                    <option value="2">2 parcelas (50% da perda/win)</option>
+                    <option value="3">3 parcelas (33% da perda/win)</option>
+                    <option value="4">4 parcelas (25% da perda/win)</option>
+                    <option value="5">5 parcelas (20% da perda/win)</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-[10px] text-slate-400 mb-0.5">Teto Máx. Stake ($ USD)</label>
+                  <input type="number" id="cfg-max-recovery-cap" min="2.0" max="1000.0" step="1.0" value="20.0" class="w-full bg-slate-900 border border-slate-800 rounded px-2.5 py-1.5 text-xs font-mono font-semibold text-cyan-300 focus:outline-none focus:border-cyan-500" />
+                </div>
+                <div>
+                  <label class="block text-[10px] text-slate-400 mb-0.5">Lucro Base Alvo</label>
+                  <select id="cfg-include-base-profit" class="w-full bg-slate-900 border border-slate-800 rounded px-2.5 py-1.5 text-xs font-mono font-semibold text-cyan-300 focus:outline-none focus:border-cyan-500 cursor-pointer">
+                    <option value="true">Sim (Parcela + Lucro Normal)</option>
+                    <option value="false">Não (Apenas Quitar Prejuízo)</option>
+                  </select>
+                </div>
+              </div>
+              <p class="text-[10px] text-cyan-400/90 leading-tight bg-cyan-950/30 p-2 rounded-lg border border-cyan-500/20">
+                💡 <strong>Cálculo Automático por Payout:</strong> O prejuízo acumulado do ciclo é dividido pelo número de parcelas. A stake necessária é calculada matematicamente pelo retorno oficial do Accumulator para pagar a parcela com segurança sem saltos agressivos de stake!
+              </p>
             </div>
           </div>
 
@@ -785,7 +815,13 @@
       const modeBadgeCont = document.getElementById("mode-badge-container");
       if (modeBadgeText && modeBadgeCont) {
         const curStake = data.current_stake || data.next_stake || data.stake_amount || 1.0;
-        if (data.operation_mode === "shield_combined") {
+        
+        // Prioridade 1: Martingale Parcelado Ativo (com perdas a pagar)
+        if (data.primary_loss_action === "fractional_martingale" && (data.accumulated_cycle_loss || 0) > 0) {
+          const rem = data.fractional_remaining_installments || data.fractional_installments || 2;
+          modeBadgeText.innerText = `📊 PARCELADO [${rem}x] (-$${data.accumulated_cycle_loss.toFixed(2)}) • Stake $${curStake.toFixed(2)}`;
+          modeBadgeCont.className = "bg-amber-950/90 border border-amber-500/80 rounded-lg px-2.5 py-1.5 text-xs flex items-center gap-1.5 animate-pulse text-amber-300 font-bold";
+        } else if (data.operation_mode === "shield_combined") {
           if (data.primary_gale_step > 0) {
             modeBadgeText.innerText = `🔁 GALE REAL [${data.primary_gale_step}/${data.primary_recovery_max_steps || 1}] ($${curStake.toFixed(2)})`;
             modeBadgeCont.className = "bg-amber-950/90 border border-amber-500/80 rounded-lg px-2.5 py-1.5 text-xs flex items-center gap-1.5 animate-pulse text-amber-300 font-bold";
@@ -1093,15 +1129,25 @@
       }
     }
 
-    // Alternância do Painel de Martingale na Primária
+    // Alternância do Painel de Martingale (Clássico ou Parcelado)
     function toggleMartingaleFields() {
       const action = document.getElementById("cfg-primary-loss-action")?.value;
-      const panel = document.getElementById("cfg-martingale-panel");
-      if (panel) {
+      const galePanel = document.getElementById("cfg-martingale-panel");
+      const fracPanel = document.getElementById("cfg-fractional-panel");
+
+      if (galePanel) {
         if (action === "recovery_martingale") {
-          panel.classList.remove("hidden");
+          galePanel.classList.remove("hidden");
         } else {
-          panel.classList.add("hidden");
+          galePanel.classList.add("hidden");
+        }
+      }
+
+      if (fracPanel) {
+        if (action === "fractional_martingale") {
+          fracPanel.classList.remove("hidden");
+        } else {
+          fracPanel.classList.add("hidden");
         }
       }
     }
@@ -1235,6 +1281,15 @@
         if (currentConfig.primary_martingale_multiplier !== undefined) {
           document.getElementById("cfg-primary-multiplier").value = Number(currentConfig.primary_martingale_multiplier).toFixed(1);
         }
+        if (currentConfig.fractional_installments !== undefined) {
+          document.getElementById("cfg-fractional-installments").value = String(currentConfig.fractional_installments);
+        }
+        if (currentConfig.max_loss_recovery_cap !== undefined) {
+          document.getElementById("cfg-max-recovery-cap").value = Number(currentConfig.max_loss_recovery_cap).toFixed(1);
+        }
+        if (currentConfig.include_base_profit !== undefined) {
+          document.getElementById("cfg-include-base-profit").value = currentConfig.include_base_profit !== false ? "true" : "false";
+        }
         toggleMartingaleFields();
 
         if (currentConfig.primary_token !== undefined) {
@@ -1350,6 +1405,9 @@
         primary_loss_action: document.getElementById("cfg-primary-loss-action").value,
         primary_recovery_max_steps: parseInt(document.getElementById("cfg-primary-max-steps").value) || 1,
         primary_martingale_multiplier: parseFloat(document.getElementById("cfg-primary-multiplier").value) || 2.0,
+        fractional_installments: parseInt(document.getElementById("cfg-fractional-installments").value) || 2,
+        max_loss_recovery_cap: parseFloat(document.getElementById("cfg-max-recovery-cap").value) || 20.0,
+        include_base_profit: document.getElementById("cfg-include-base-profit").value === "true",
         primary_token: document.getElementById("cfg-prim-token").value.trim(),
         primary_account_id: primaryAccId,
         primary_app_id: document.getElementById("cfg-prim-app-id").value.trim(),

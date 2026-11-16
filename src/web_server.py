@@ -54,6 +54,9 @@ class DashboardState:
             "primary_loss_action": config.primary_loss_action,
             "primary_recovery_max_steps": config.primary_recovery_max_steps,
             "primary_martingale_multiplier": config.primary_martingale_multiplier,
+            "fractional_installments": config.fractional_installments,
+            "include_base_profit": config.include_base_profit,
+            "max_loss_recovery_cap": config.max_loss_recovery_cap,
             "primary_token": config.token,
             "primary_app_id": config.app_id,
             "primary_account_id": config.account_id,
@@ -79,6 +82,9 @@ class DashboardState:
             config.primary_loss_action = str(db_cfg.get("primary_loss_action", config.primary_loss_action))
             config.primary_recovery_max_steps = int(db_cfg.get("primary_recovery_max_steps", config.primary_recovery_max_steps))
             config.primary_martingale_multiplier = float(db_cfg.get("primary_martingale_multiplier", config.primary_martingale_multiplier))
+            config.fractional_installments = int(db_cfg.get("fractional_installments", config.fractional_installments))
+            config.include_base_profit = bool(db_cfg.get("include_base_profit", config.include_base_profit))
+            config.max_loss_recovery_cap = float(db_cfg.get("max_loss_recovery_cap", config.max_loss_recovery_cap))
             if db_cfg.get("primary_token"):
                 config.token = str(db_cfg["primary_token"])
             if db_cfg.get("primary_app_id"):
@@ -129,11 +135,18 @@ class DashboardState:
         self.shield_losses = 0
         self.shield_pnl = 0.0
 
-        # Recuperação / Martingale
+        # Recuperação / Martingale Clássico e Parcelado
         self.primary_loss_action = config.primary_loss_action
         self.primary_recovery_max_steps = config.primary_recovery_max_steps
         self.primary_martingale_multiplier = config.primary_martingale_multiplier
         self.primary_gale_step = 0
+
+        # Parâmetros e Estado do Martingale Parcelado
+        self.fractional_installments = getattr(config, "fractional_installments", 2)
+        self.include_base_profit = getattr(config, "include_base_profit", True)
+        self.max_loss_recovery_cap = getattr(config, "max_loss_recovery_cap", 20.00)
+        self.accumulated_cycle_loss = 0.0
+        self.fractional_remaining_installments = 0
 
         active_acc = self.primary_account if self.active_trade_account == "primary" else self.secondary_account
         self.is_running = False
@@ -176,19 +189,47 @@ class DashboardState:
 
     def get_current_stake(self, account: Optional[AccountClient] = None) -> float:
         """
-        Calcula o valor da stake, aplicando Martingale se a recuperação estiver ativa
-        e o nível de gale for maior que 0.
+        Calcula o valor da stake da próxima ordem:
+        - fractional_martingale: Martingale parcelado baseado no payout oficial do Accumulator.
+        - recovery_martingale: Multiplicador geométrico clássico.
         """
         acc = account or self.get_active_account()
 
-        # No modo escudo combinado, o Martingale só é acionado na conta primária (Sniper Real)
+        # No modo escudo combinado, o Martingale só atua na conta primária (Sniper Real)
         if self.operation_mode == "shield_combined" and acc.account_role != "primary":
             return self.config.stake_amount
 
-        # Se a estratégia de recuperação com Martingale estiver ativa
+        # 1. Martingale Parcelado (Fracionado com base na matemática do Accumulator)
+        if self.primary_loss_action == "fractional_martingale" and self.accumulated_cycle_loss > 0:
+            steps = max(1, self.config.exit_ticks - 1)
+            growth = self.config.growth_rate
+            payout_rate = ((1.0 + growth) ** steps) - 1.0
+            if payout_rate <= 0:
+                payout_rate = 0.05
+
+            installments = max(1, self.fractional_remaining_installments or self.fractional_installments)
+            debt_slice = self.accumulated_cycle_loss / installments
+
+            if self.include_base_profit:
+                base_profit = self.config.stake_amount * payout_rate
+                target_profit = debt_slice + base_profit
+            else:
+                target_profit = debt_slice
+
+            calc_stake = round(target_profit / payout_rate, 2)
+            calc_stake = max(1.00, calc_stake)
+
+            if self.max_loss_recovery_cap > 0:
+                calc_stake = min(self.max_loss_recovery_cap, calc_stake)
+
+            return calc_stake
+
+        # 2. Martingale Clássico Multiplicador
         if self.primary_loss_action == "recovery_martingale" and self.primary_gale_step > 0:
             mult = self.primary_martingale_multiplier ** self.primary_gale_step
             calc_stake = round(self.config.stake_amount * mult, 2)
+            if self.max_loss_recovery_cap > 0:
+                calc_stake = min(self.max_loss_recovery_cap, calc_stake)
             return max(1.0, calc_stake)
 
         return self.config.stake_amount
@@ -250,6 +291,8 @@ class DashboardState:
         self.shield_losses_count = 0
         self.sniper_armed = False
         self.primary_gale_step = 0
+        self.accumulated_cycle_loss = 0.0
+        self.fractional_remaining_installments = 0
         self.session_start_time = datetime.now()
         self.session_number = self.session_manager.get_next_session_number()
         self.session_id = f"sess_{int(datetime.now().timestamp())}"
@@ -311,6 +354,11 @@ class DashboardState:
             "primary_recovery_max_steps": self.primary_recovery_max_steps,
             "primary_martingale_multiplier": self.primary_martingale_multiplier,
             "primary_gale_step": self.primary_gale_step,
+            "fractional_installments": self.fractional_installments,
+            "fractional_remaining_installments": self.fractional_remaining_installments,
+            "accumulated_cycle_loss": round(self.accumulated_cycle_loss, 2),
+            "include_base_profit": self.include_base_profit,
+            "max_loss_recovery_cap": self.max_loss_recovery_cap,
             "shield_pnl": round(self.shield_pnl, 2),
             "shield_wins": self.shield_wins,
             "shield_losses": self.shield_losses,
@@ -465,7 +513,7 @@ class BotRunner:
         """
         Processa a transição de estado pós-trade para todos os modos:
         - Modo Escudo Combinado (shield_combined): monitora losses no Escudo Demo para armar Sniper Real
-          e executa Martingale na Primária se ativado.
+          e executa Martingale (Clássico ou Parcelado) na Primária se ativado.
         - Modos Somente Primária / Secundária: executa Martingale diretamente na conta ativa.
         Retorna True se for necessário alternar de conexão WebSocket (troca de conta).
         """
@@ -492,6 +540,25 @@ class BotRunner:
             else:
                 # Trade executado na Conta Primária (Real)
                 if profit > 0:
+                    # 1. Martingale Parcelado na Primária
+                    if self.st.primary_loss_action == "fractional_martingale" and self.st.accumulated_cycle_loss > 0:
+                        self.st.accumulated_cycle_loss = max(0.0, self.st.accumulated_cycle_loss - profit)
+                        self.st.fractional_remaining_installments = max(0, self.st.fractional_remaining_installments - 1)
+                        if self.st.accumulated_cycle_loss <= 0.02 or self.st.fractional_remaining_installments == 0:
+                            self.st.accumulated_cycle_loss = 0.0
+                            self.st.fractional_remaining_installments = 0
+                            self.st.sniper_armed = False
+                            self.st.shield_losses_count = 0
+                            self.st.latest_log = f"🎉 CICLO PARCELADO QUITADO NA REAL (+${profit:.2f})! Retornando ao Escudo Demo."
+                            logger.info(self.st.latest_log)
+                            return True
+                        else:
+                            next_stake = self.st.get_current_stake(account)
+                            self.st.latest_log = f"✅ PARCELA PAGA NA REAL (+${profit:.2f})! Dívida restante: ${self.st.accumulated_cycle_loss:.2f} ({self.st.fractional_remaining_installments} rest.) | Próx. Stake: ${next_stake:.2f}"
+                            logger.info(self.st.latest_log)
+                            return False
+
+                    # 2. Martingale Clássico ou Tiro Único
                     if self.st.primary_gale_step > 0:
                         self.st.latest_log = f"🎉 VITÓRIA NA RECUPERAÇÃO REAL (+${profit:.2f})! Martingale concluído com sucesso. Retornando ao Escudo Demo."
                     else:
@@ -503,14 +570,23 @@ class BotRunner:
                     return True
                 else:
                     # Loss na Conta Primária
-                    if (self.st.primary_loss_action == "recovery_martingale" and 
-                        self.st.primary_gale_step < self.st.primary_recovery_max_steps and 
-                        self.st.risk.can_trade()):
+                    # 1. Martingale Parcelado
+                    if (self.st.primary_loss_action == "fractional_martingale" and self.st.risk.can_trade()):
+                        self.st.accumulated_cycle_loss += abs(profit)
+                        self.st.fractional_remaining_installments = self.st.fractional_installments
+                        next_stake = self.st.get_current_stake(account)
+                        self.st.latest_log = f"📊 LOSS NA REAL! Martingale Parcelado ativado: Prejuízo acumulado -${self.st.accumulated_cycle_loss:.2f} em {self.st.fractional_remaining_installments} parcelas | Próx. Stake: ${next_stake:.2f}"
+                        logger.warning(self.st.latest_log)
+                        return False
+
+                    # 2. Martingale Clássico
+                    elif (self.st.primary_loss_action == "recovery_martingale" and 
+                          self.st.primary_gale_step < self.st.primary_recovery_max_steps and 
+                          self.st.risk.can_trade()):
                         self.st.primary_gale_step += 1
                         next_stake = self.st.get_current_stake(account)
                         self.st.latest_log = f"🔁 LOSS NA PRIMÁRIA! Ativando Martingale [Nível {self.st.primary_gale_step}/{self.st.primary_recovery_max_steps}] com Stake ${next_stake:.2f}."
                         logger.warning(self.st.latest_log)
-                        # Retorna False: Permanece na Conta Primária para disparar a próxima entrada com stake multiplicada!
                         return False
                     else:
                         if self.st.primary_gale_step > 0:
@@ -519,6 +595,8 @@ class BotRunner:
                             self.st.latest_log = f"⚠️ Trade na Primária finalizado com Loss (${profit:.2f}). Retornando ao Escudo Demo para nova sondagem."
                         logger.warning(self.st.latest_log)
                         self.st.primary_gale_step = 0
+                        self.st.accumulated_cycle_loss = 0.0
+                        self.st.fractional_remaining_installments = 0
                         self.st.sniper_armed = False
                         self.st.shield_losses_count = 0
                         return True
@@ -528,6 +606,22 @@ class BotRunner:
         # ========================================================
         else:
             if profit > 0:
+                # 1. Martingale Parcelado
+                if self.st.primary_loss_action == "fractional_martingale" and self.st.accumulated_cycle_loss > 0:
+                    self.st.accumulated_cycle_loss = max(0.0, self.st.accumulated_cycle_loss - profit)
+                    self.st.fractional_remaining_installments = max(0, self.st.fractional_remaining_installments - 1)
+                    if self.st.accumulated_cycle_loss <= 0.02 or self.st.fractional_remaining_installments == 0:
+                        self.st.accumulated_cycle_loss = 0.0
+                        self.st.fractional_remaining_installments = 0
+                        self.st.latest_log = f"🎉 CICLO PARCELADO QUITADO COM SUCESSO (+${profit:.2f})! Retornando para stake base (${self.st.config.stake_amount:.2f})."
+                        logger.info(self.st.latest_log)
+                    else:
+                        next_stake = self.st.get_current_stake(account)
+                        self.st.latest_log = f"✅ PARCELA PAGA (+${profit:.2f})! Dívida restante: ${self.st.accumulated_cycle_loss:.2f} ({self.st.fractional_remaining_installments} rest.) | Próx. Stake: ${next_stake:.2f}"
+                        logger.info(self.st.latest_log)
+                    return False
+
+                # 2. Martingale Clássico
                 if self.st.primary_gale_step > 0:
                     self.st.latest_log = f"🎉 VITÓRIA NA RECUPERAÇÃO (+${profit:.2f})! Martingale finalizado. Resetando para stake base (${self.st.config.stake_amount:.2f})."
                     logger.info(self.st.latest_log)
@@ -535,9 +629,19 @@ class BotRunner:
                 return False
             else:
                 # Ocorreu derrota
-                if (self.st.primary_loss_action == "recovery_martingale" and 
-                    self.st.primary_gale_step < self.st.primary_recovery_max_steps and 
-                    self.st.risk.can_trade()):
+                # 1. Martingale Parcelado
+                if (self.st.primary_loss_action == "fractional_martingale" and self.st.risk.can_trade()):
+                    self.st.accumulated_cycle_loss += abs(profit)
+                    self.st.fractional_remaining_installments = self.st.fractional_installments
+                    next_stake = self.st.get_current_stake(account)
+                    self.st.latest_log = f"📊 LOSS DETECTADO! Martingale Parcelado: Prejuízo acumulado -${self.st.accumulated_cycle_loss:.2f} em {self.st.fractional_remaining_installments} parcelas | Próx. Stake: ${next_stake:.2f}"
+                    logger.warning(self.st.latest_log)
+                    return False
+
+                # 2. Martingale Clássico
+                elif (self.st.primary_loss_action == "recovery_martingale" and 
+                      self.st.primary_gale_step < self.st.primary_recovery_max_steps and 
+                      self.st.risk.can_trade()):
                     self.st.primary_gale_step += 1
                     next_stake = self.st.get_current_stake(account)
                     self.st.latest_log = f"🔁 LOSS DETECTADO! Ativando Martingale [Nível {self.st.primary_gale_step}/{self.st.primary_recovery_max_steps}] com Stake ${next_stake:.2f}."
@@ -548,6 +652,8 @@ class BotRunner:
                         self.st.latest_log = f"🛑 Limite de {self.st.primary_recovery_max_steps} nível(is) de Martingale atingido. Resetando para stake base (${self.st.config.stake_amount:.2f})."
                         logger.warning(self.st.latest_log)
                     self.st.primary_gale_step = 0
+                    self.st.accumulated_cycle_loss = 0.0
+                    self.st.fractional_remaining_installments = 0
                     return False
 
     async def run_loop(self):
@@ -948,6 +1054,9 @@ class ConfigUpdateRequest(BaseModel):
     primary_loss_action: Optional[str] = "return_to_shield"
     primary_recovery_max_steps: Optional[int] = 1
     primary_martingale_multiplier: Optional[float] = 2.0
+    fractional_installments: Optional[int] = 2
+    include_base_profit: Optional[bool] = True
+    max_loss_recovery_cap: Optional[float] = 20.00
     primary_token: Optional[str] = None
     primary_app_id: Optional[str] = None
     primary_account_id: Optional[str] = None
@@ -974,6 +1083,11 @@ async def get_config():
         "primary_loss_action": state.primary_loss_action,
         "primary_recovery_max_steps": state.primary_recovery_max_steps,
         "primary_martingale_multiplier": state.primary_martingale_multiplier,
+        "fractional_installments": state.fractional_installments,
+        "include_base_profit": state.include_base_profit,
+        "max_loss_recovery_cap": state.max_loss_recovery_cap,
+        "accumulated_cycle_loss": state.accumulated_cycle_loss,
+        "fractional_remaining_installments": state.fractional_remaining_installments,
         "primary_token": state.primary_account.token,
         "primary_app_id": state.primary_account.app_id,
         "primary_account_id": state.primary_account.account_id,
@@ -1041,6 +1155,16 @@ async def update_config(cfg_in: ConfigUpdateRequest):
             state.primary_martingale_multiplier = max(1.0, float(cfg_in.primary_martingale_multiplier))
             state.config.primary_martingale_multiplier = state.primary_martingale_multiplier
 
+        if cfg_in.fractional_installments is not None:
+            state.fractional_installments = max(1, int(cfg_in.fractional_installments))
+            state.config.fractional_installments = state.fractional_installments
+        if cfg_in.include_base_profit is not None:
+            state.include_base_profit = bool(cfg_in.include_base_profit)
+            state.config.include_base_profit = state.include_base_profit
+        if cfg_in.max_loss_recovery_cap is not None:
+            state.max_loss_recovery_cap = max(1.0, float(cfg_in.max_loss_recovery_cap))
+            state.config.max_loss_recovery_cap = state.max_loss_recovery_cap
+
         if cfg_in.primary_token:
             state.primary_account.token = cfg_in.primary_token.strip()
             state.config.token = state.primary_account.token
@@ -1095,6 +1219,9 @@ async def update_config(cfg_in: ConfigUpdateRequest):
             "primary_loss_action": state.primary_loss_action,
             "primary_recovery_max_steps": state.primary_recovery_max_steps,
             "primary_martingale_multiplier": state.primary_martingale_multiplier,
+            "fractional_installments": state.fractional_installments,
+            "include_base_profit": state.include_base_profit,
+            "max_loss_recovery_cap": state.max_loss_recovery_cap,
             "primary_token": state.primary_account.token,
             "primary_app_id": state.primary_account.app_id,
             "primary_account_id": state.primary_account.account_id,
@@ -1118,6 +1245,9 @@ async def update_config(cfg_in: ConfigUpdateRequest):
             "PRIMARY_LOSS_ACTION": state.primary_loss_action,
             "PRIMARY_RECOVERY_MAX_STEPS": str(state.primary_recovery_max_steps),
             "PRIMARY_MARTINGALE_MULTIPLIER": f"{state.primary_martingale_multiplier:.2f}",
+            "FRACTIONAL_INSTALLMENTS": str(state.fractional_installments),
+            "INCLUDE_BASE_PROFIT": str(state.include_base_profit).lower(),
+            "MAX_LOSS_RECOVERY_CAP": f"{state.max_loss_recovery_cap:.2f}",
             "DERIV_PRIMARY_API_TOKEN": state.primary_account.token,
             "DERIV_PRIMARY_APP_ID": state.primary_account.app_id,
             "DERIV_PRIMARY_ACCOUNT_ID": state.primary_account.account_id,

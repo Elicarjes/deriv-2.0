@@ -44,6 +44,9 @@ class SettingsDB:
                     primary_loss_action TEXT NOT NULL DEFAULT 'return_to_shield',
                     primary_recovery_max_steps INTEGER NOT NULL DEFAULT 1,
                     primary_martingale_multiplier REAL NOT NULL DEFAULT 2.0,
+                    fractional_installments INTEGER NOT NULL DEFAULT 2,
+                    include_base_profit INTEGER NOT NULL DEFAULT 1,
+                    max_loss_recovery_cap REAL NOT NULL DEFAULT 20.00,
                     primary_token TEXT DEFAULT '',
                     primary_app_id TEXT DEFAULT '',
                     primary_account_id TEXT DEFAULT '',
@@ -86,6 +89,9 @@ class SettingsDB:
             "primary_loss_action": "TEXT NOT NULL DEFAULT 'return_to_shield'",
             "primary_recovery_max_steps": "INTEGER NOT NULL DEFAULT 1",
             "primary_martingale_multiplier": "REAL NOT NULL DEFAULT 2.0",
+            "fractional_installments": "INTEGER NOT NULL DEFAULT 2",
+            "include_base_profit": "INTEGER NOT NULL DEFAULT 1",
+            "max_loss_recovery_cap": "REAL NOT NULL DEFAULT 20.00",
             "primary_token": "TEXT DEFAULT ''",
             "primary_app_id": "TEXT DEFAULT ''",
             "primary_account_id": "TEXT DEFAULT ''",
@@ -121,7 +127,8 @@ class SettingsDB:
                     "daily_stop_loss_usd", "daily_take_profit_usd", "max_consecutive_losses",
                     "wait_cycle_reset", "max_entry_tick", "operation_mode",
                     "shield_trigger_losses", "primary_loss_action", "primary_recovery_max_steps",
-                    "primary_martingale_multiplier", "primary_token", "primary_app_id",
+                    "primary_martingale_multiplier", "fractional_installments", "include_base_profit",
+                    "max_loss_recovery_cap", "primary_token", "primary_app_id",
                     "primary_account_id", "secondary_token", "secondary_app_id",
                     "secondary_account_id", "symbol", "auto_select_best_asset", "updated_at"
                 ]
@@ -141,6 +148,9 @@ class SettingsDB:
                     str(initial_values.get("primary_loss_action", "return_to_shield")),
                     int(initial_values.get("primary_recovery_max_steps", 1)),
                     float(initial_values.get("primary_martingale_multiplier", 2.0)),
+                    int(initial_values.get("fractional_installments", 2)),
+                    1 if initial_values.get("include_base_profit", True) else 0,
+                    float(initial_values.get("max_loss_recovery_cap", 20.00)),
                     str(initial_values.get("primary_token", "")),
                     str(initial_values.get("primary_app_id", "")),
                     str(initial_values.get("primary_account_id", "")),
@@ -166,6 +176,7 @@ class SettingsDB:
             data = dict(row)
             data["wait_cycle_reset"] = bool(data.get("wait_cycle_reset", 1))
             data["auto_select_best_asset"] = bool(data.get("auto_select_best_asset", 1))
+            data["include_base_profit"] = bool(data.get("include_base_profit", 1))
             return data
 
     def save_settings(self, updates: Dict[str, Any], reason: str = "Ajuste manual no painel") -> Dict[str, Any]:
@@ -184,7 +195,8 @@ class SettingsDB:
             "daily_stop_loss_usd", "daily_take_profit_usd", "max_consecutive_losses",
             "wait_cycle_reset", "max_entry_tick", "operation_mode",
             "shield_trigger_losses", "primary_loss_action", "primary_recovery_max_steps",
-            "primary_martingale_multiplier", "primary_token", "primary_app_id",
+            "primary_martingale_multiplier", "fractional_installments", "include_base_profit",
+            "max_loss_recovery_cap", "primary_token", "primary_app_id",
             "primary_account_id", "secondary_token", "secondary_app_id",
             "secondary_account_id", "symbol", "auto_select_best_asset", "updated_at"
         ]

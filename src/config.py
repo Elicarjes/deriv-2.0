@@ -24,12 +24,18 @@ class BotConfig:
     operation_mode: str = os.getenv("OPERATION_MODE", "secondary_only")
     shield_trigger_losses: int = int(os.getenv("SHIELD_TRIGGER_LOSSES", "2"))  # X derrotas na demo para armar a Real
 
-    # Ação pós-loss na Conta Primária (Modo Escudo):
-    # - "return_to_shield"     : Tiro Único Conservador (Volta imediatamente ao Escudo Demo)
-    # - "recovery_martingale"  : Tentativa de Recuperação / Martingale na Primária antes de voltar ao Escudo
+    # Ação pós-loss (Modos Escudo e Isolado):
+    # - "return_to_shield"      : Tiro Único Conservador (Volta imediatamente ao Escudo Demo ou mantém stake)
+    # - "recovery_martingale"   : Multiplicador Clássico (ex: 2.0x por X tentativas)
+    # - "fractional_martingale" : Martingale Parcelado (Dilui o prejuízo acumulado em X parcelas baseadas no payout)
     primary_loss_action: str = os.getenv("PRIMARY_LOSS_ACTION", "return_to_shield")
     primary_recovery_max_steps: int = int(os.getenv("PRIMARY_RECOVERY_MAX_STEPS", "1"))
     primary_martingale_multiplier: float = float(os.getenv("PRIMARY_MARTINGALE_MULTIPLIER", "2.0"))
+
+    # Parâmetros do Martingale Parcelado
+    fractional_installments: int = int(os.getenv("FRACTIONAL_INSTALLMENTS", "2"))
+    include_base_profit: bool = os.getenv("INCLUDE_BASE_PROFIT", "true").lower() in ("true", "1", "yes")
+    max_loss_recovery_cap: float = float(os.getenv("MAX_LOSS_RECOVERY_CAP", "20.00"))
 
     # Configurações do Ativo e Contrato
     symbol: str = os.getenv("SYMBOL", "R_10")
