@@ -136,6 +136,20 @@
         <i data-lucide="play" class="w-4 h-4"></i>
         <span>Iniciar Robô</span>
       </button>
+
+      <!-- Divisor -->
+      <div class="h-6 w-px bg-slate-800"></div>
+
+      <!-- Badge Usuário Logado & Logout -->
+      <div class="flex items-center gap-1.5 bg-slate-900 border border-slate-800 rounded-lg pl-2.5 pr-1 py-1">
+        <span class="flex items-center gap-1.5 text-xs text-slate-300">
+          <i data-lucide="user" class="w-3.5 h-3.5 text-cyan-400"></i>
+          <span id="header-user-name" class="font-bold text-slate-200">admin</span>
+        </span>
+        <button onclick="handleLogout()" title="Sair da Conta (Logout)" class="p-1 rounded-md text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition">
+          <i data-lucide="log-out" class="w-3.5 h-3.5"></i>
+        </button>
+      </div>
     </div>
   </header>
 
@@ -805,6 +819,50 @@
     let ws = null;
     let currentConfig = null;
 
+    // Autenticação e Controle de Sessão Multi-Usuário
+    function getStoredToken() {
+      const match = document.cookie.match(new RegExp('(^| )dq_token=([^;]+)'));
+      return localStorage.getItem("dq_token") || (match ? match[2] : "");
+    }
+
+    const currentAuthToken = getStoredToken();
+    if (!currentAuthToken) {
+      window.location.href = "/login";
+    }
+
+    // Interceptor global para injetar Token Bearer e capturar 401
+    const originalFetch = window.fetch;
+    window.fetch = async function(...args) {
+      const token = getStoredToken();
+      if (token) {
+        if (!args[1]) args[1] = {};
+        args[1].headers = args[1].headers || {};
+        if (args[1].headers instanceof Headers) {
+          if (!args[1].headers.has("Authorization")) args[1].headers.set("Authorization", `Bearer ${token}`);
+        } else {
+          if (!args[1].headers["Authorization"]) args[1].headers["Authorization"] = `Bearer ${token}`;
+        }
+      }
+      const response = await originalFetch.apply(this, args);
+      if (response.status === 401) {
+        window.location.href = "/login";
+      }
+      return response;
+    };
+
+    async function handleLogout() {
+      try {
+        await fetch("/api/auth/logout", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${getStoredToken()}` }
+        });
+      } catch (e) {}
+      localStorage.removeItem("dq_token");
+      localStorage.removeItem("dq_user");
+      document.cookie = "dq_token=; path=/; max-age=0";
+      window.location.href = "/login";
+    }
+
     // Rastreamento de estado para evitar re-renderizações desnecessárias do DOM
     let lastIsRunning = null;
     let lastInTrade = null;
@@ -814,8 +872,13 @@
     let lastWinStreaksSignature = "";
 
     function initWebSocket() {
+      const token = getStoredToken();
+      if (!token) {
+        window.location.href = "/login";
+        return;
+      }
       const loc = window.location;
-      const wsUri = (loc.protocol === "https:" ? "wss://" : "ws://") + loc.host + "/ws";
+      const wsUri = (loc.protocol === "https:" ? "wss://" : "ws://") + loc.host + "/ws?token=" + encodeURIComponent(token);
       ws = new WebSocket(wsUri);
 
       ws.onopen = () => {
@@ -835,6 +898,11 @@
 
     function updateDashboard(data) {
       if (!data) return;
+
+      if (data.current_user) {
+        const uEl = document.getElementById("header-user-name");
+        if (uEl) uEl.innerText = data.current_user.name || data.current_user.username;
+      }
 
       let needIconsUpdate = false;
 

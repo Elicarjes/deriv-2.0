@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional, Set
 import urllib.request
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Depends, HTTPException, status
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel
 import uvicorn
@@ -26,6 +26,7 @@ from asset_selector import find_safest_asset
 from session_manager import SessionManager
 from account_client import AccountClient
 from settings_db import SettingsDB
+import auth
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("WebServer")
@@ -36,10 +37,37 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 WEB_DIR = BASE_DIR / "web"
 
 
+async def get_current_user(request: Request) -> Dict[str, Any]:
+    """Valida o usuário via Bearer Token, Cookie dq_token ou Query Param token."""
+    token = None
+    auth_header = request.headers.get("Authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header.split(" ", 1)[1].strip()
+    if not token:
+        token = request.cookies.get("dq_token")
+    if not token:
+        token = request.query_params.get("token")
+
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Não autenticado. Faça login para continuar."
+        )
+
+    user = auth.get_user_by_token(token)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Sessão expirada ou inválida. Faça login novamente."
+        )
+    return user
+
+
 class DashboardState:
-    def __init__(self, config: BotConfig):
-        # 1. Banco de Dados SQLite de Configurações (Persistência Definitiva)
-        self.db = SettingsDB(BASE_DIR / "data" / "settings.db")
+    def __init__(self, config: BotConfig, user_id: int = 1, db: Optional[SettingsDB] = None):
+        self.user_id = user_id
+        # 1. Banco de Dados SQLite de Configurações por Usuário
+        self.db = db or SettingsDB(BASE_DIR / "data" / "settings.db")
         initial_dict = {
             "growth_rate": config.growth_rate,
             "stake_amount": config.stake_amount,
@@ -67,11 +95,13 @@ class DashboardState:
             "auto_select_best_asset": config.auto_select_best_asset
         }
         self.db.seed_if_empty(initial_dict)
-        db_cfg = self.db.get_settings()
+        db_cfg = self.db.get_settings(user_id=self.user_id)
         if db_cfg:
             config.growth_rate = float(db_cfg.get("growth_rate", config.growth_rate))
             config.stake_amount = float(db_cfg.get("stake_amount", config.stake_amount))
             config.exit_ticks = int(db_cfg.get("exit_ticks", config.exit_ticks))
+            config.session_stop_loss_usd = float(db_cfg.get("session_stop_loss_usd", config.session_stop_loss_usd))
+            config.session_take_profit_usd = float(db_cfg.get("session_take_profit_usd", config.session_take_profit_usd))
             config.daily_stop_loss_usd = float(db_cfg.get("daily_stop_loss_usd", config.daily_stop_loss_usd))
             config.daily_take_profit_usd = float(db_cfg.get("daily_take_profit_usd", config.daily_take_profit_usd))
             config.max_consecutive_losses = int(db_cfg.get("max_consecutive_losses", config.max_consecutive_losses))
@@ -97,13 +127,13 @@ class DashboardState:
                 config.secondary_app_id = str(db_cfg["secondary_app_id"])
             if db_cfg.get("secondary_account_id"):
                 config.secondary_account_id = str(db_cfg["secondary_account_id"])
-            logger.info("📦 Configurações operacionais carregadas com sucesso do Banco de Dados SQLite.")
+            logger.info(f"📦 Configurações operacionais do usuário {self.user_id} carregadas do SQLite.")
 
         self.config = config
         self.risk = RiskManager(config)
-        self.session_manager = SessionManager(BASE_DIR / "data" / "sessions.json")
-        self.session_number = self.session_manager.get_next_session_number()
-        self.session_id = f"sess_{int(datetime.now().timestamp())}"
+        user_sessions = self.db.get_user_sessions(self.user_id)
+        self.session_number = (max([s["number"] for s in user_sessions], default=0) + 1)
+        self.session_id = f"sess_{int(datetime.now().timestamp())}_{self.user_id}"
         self.session_start_time = datetime.now()
         self.session_trades: List[Dict[str, Any]] = []
 
@@ -276,7 +306,7 @@ class DashboardState:
             },
             "trades": list(self.session_trades)
         }
-        self.session_manager.archive_session(session_record)
+        self.db.archive_user_session(self.user_id, session_record)
         return session_record
 
     def start_new_session(self, reason: str = "Novo ciclo de testes iniciado"):
@@ -295,16 +325,18 @@ class DashboardState:
         self.accumulated_cycle_loss = 0.0
         self.fractional_remaining_installments = 0
         self.session_start_time = datetime.now()
-        self.session_number = self.session_manager.get_next_session_number()
-        self.session_id = f"sess_{int(datetime.now().timestamp())}"
+        user_sessions = self.db.get_user_sessions(self.user_id)
+        self.session_number = (max([s["number"] for s in user_sessions], default=0) + 1)
+        self.session_id = f"sess_{int(datetime.now().timestamp())}_{self.user_id}"
         self.latest_log = f"✨ Nova Sessão #{self.session_number} iniciada! ({reason})"
-        logger.info(f"✨ Nova Sessão #{self.session_number} iniciada ({reason}).")
+        logger.info(f"✨ Nova Sessão #{self.session_number} iniciada ({reason}) [User {self.user_id}].")
 
     def to_dict(self) -> Dict[str, Any]:
         win_rate = (self.risk.wins / self.risk.total_trades * 100) if self.risk.total_trades > 0 else 0.0
         active_acc = self.get_active_account()
 
         return {
+            "user_id": self.user_id,
             "is_running": self.is_running,
             "status_message": self.status_message,
             "account_id": active_acc.account_id or self.account_id,
@@ -351,7 +383,7 @@ class DashboardState:
             "session_id": self.session_id,
             "session_number": self.session_number,
             "session_start_time": self.session_start_time.strftime("%H:%M:%S"),
-            "archived_sessions_count": len(self.session_manager.get_all_sessions()),
+            "archived_sessions_count": len(self.db.get_user_sessions(self.user_id)),
 
             # Status Multi-Contas & Modo Escudo
             "operation_mode": self.operation_mode,
@@ -405,26 +437,7 @@ class DashboardState:
             logger.info(f"🔄 Saldos sincronizados com a Deriv: Primária ${bal_prim:.2f} ({self.primary_account.account_type}) | Secundária ${bal_sec:.2f} ({self.secondary_account.account_type})")
             await self.notify_clients()
         except Exception as e:
-            logger.warning(f"Erro ao sincronizar saldos com a Deriv: {e}")
-
-
-
-cfg = BotConfig()
-state = DashboardState(cfg)
-
-
-def fetch_initial_balances():
-    """Busca o saldo inicial de ambas as contas (Primária e Secundária) via REST."""
-    bal_prim = state.primary_account.fetch_balance()
-    bal_sec = state.secondary_account.fetch_balance()
-    active_acc = state.get_active_account()
-    state.account_balance = active_acc.balance
-    state.account_id = active_acc.account_id
-    state.account_type = active_acc.account_type
-    logger.info(f"✅ Contas prontas: Primária ${bal_prim:.2f} ({state.primary_account.account_type}) | Secundária ${bal_sec:.2f} ({state.secondary_account.account_type})")
-
-
-fetch_initial_balances()
+            logger.warning(f"Erro ao sincronizar saldos com a Deriv [User {self.user_id}]: {e}")
 
 
 class BotRunner:
@@ -988,22 +1001,109 @@ class BotRunner:
         self.st.session_trades.insert(0, trade_item)
 
 
-runner = BotRunner(state)
+class BotManager:
+    """Gerencia instâncias isoladas de robôs e estados para cada usuário (Multi-Tenant)."""
+    def __init__(self):
+        self.user_states: Dict[int, DashboardState] = {}
+        self.user_runners: Dict[int, BotRunner] = {}
+        self.db = SettingsDB(BASE_DIR / "data" / "settings.db")
+
+    def get_state(self, user_id: int) -> DashboardState:
+        if user_id not in self.user_states:
+            bot_cfg = BotConfig()
+            st = DashboardState(bot_cfg, user_id=user_id, db=self.db)
+            self.user_states[user_id] = st
+            self.user_runners[user_id] = BotRunner(st)
+            if st.primary_account.is_configured() or st.secondary_account.is_configured():
+                try:
+                    asyncio.create_task(st.sync_accounts_balance())
+                except Exception:
+                    pass
+        return self.user_states[user_id]
+
+    def get_runner(self, user_id: int) -> BotRunner:
+        self.get_state(user_id)
+        return self.user_runners[user_id]
+
+
+bot_manager = BotManager()
+
+
+# ==========================================
+# ROTAS DE AUTENTICAÇÃO E SESSÃO
+# ==========================================
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class RegisterRequest(BaseModel):
+    username: str
+    password: str
+    name: Optional[str] = ""
+    email: Optional[str] = ""
+
+
+@app.post("/api/auth/login")
+async def api_login(req: LoginRequest):
+    user = auth.authenticate_user(req.username, req.password)
+    if not user:
+        return JSONResponse(status_code=400, content={"status": "error", "message": "Usuário ou senha incorretos."})
+    token = auth.create_session_token(user["id"])
+    bot_manager.get_state(user["id"])
+    return {"status": "success", "token": token, "user": user}
+
+
+@app.post("/api/auth/register")
+async def api_register(req: RegisterRequest):
+    try:
+        user = auth.register_user(req.username, req.password, name=req.name or "", email=req.email or "")
+        token = auth.create_session_token(user["id"])
+        bot_manager.get_state(user["id"])
+        return {"status": "success", "token": token, "user": user}
+    except ValueError as e:
+        return JSONResponse(status_code=400, content={"status": "error", "message": str(e)})
+
+
+@app.post("/api/auth/logout")
+async def api_logout(request: Request):
+    token = request.headers.get("Authorization", "").replace("Bearer ", "").strip() or request.cookies.get("dq_token")
+    if token:
+        auth.revoke_token(token)
+    return {"status": "success", "message": "Sessão encerrada com sucesso."}
+
+
+@app.get("/api/auth/me")
+async def api_me(user: Dict[str, Any] = Depends(get_current_user)):
+    return {"status": "success", "user": user}
+
+
+@app.get("/login", response_class=HTMLResponse)
+async def serve_login():
+    login_path = WEB_DIR / "login.html"
+    return HTMLResponse(content=login_path.read_text(encoding="utf-8"))
 
 
 @app.get("/", response_class=HTMLResponse)
-async def serve_index():
+async def serve_index(request: Request):
+    token = request.cookies.get("dq_token") or request.query_params.get("token")
+    user = auth.get_user_by_token(token) if token else None
+    if not user:
+        return HTMLResponse("<script>window.location.href='/login';</script>")
     index_path = WEB_DIR / "index.html"
     return HTMLResponse(content=index_path.read_text(encoding="utf-8"))
 
 
 @app.get("/api/status")
-async def get_status():
-    return JSONResponse(content=state.to_dict())
+async def get_status(user: Dict[str, Any] = Depends(get_current_user)):
+    state = bot_manager.get_state(user["id"])
+    return JSONResponse(content={**state.to_dict(), "current_user": user})
 
 
 @app.post("/api/start")
-async def start_bot():
+async def start_bot(user: Dict[str, Any] = Depends(get_current_user)):
+    state = bot_manager.get_state(user["id"])
+    runner = bot_manager.get_runner(user["id"])
     if state.is_running:
         return {"status": "already_running", "message": "O robô já está em execução."}
     state.is_running = True
@@ -1014,9 +1114,9 @@ async def start_bot():
 
 
 @app.post("/api/stop")
-async def stop_bot():
+async def stop_bot(user: Dict[str, Any] = Depends(get_current_user)):
+    state = bot_manager.get_state(user["id"])
     if not state.is_running:
-        # Garante a limpeza do estado de trade mesmo se já estiver marcado como parado
         state.in_trade = False
         state.current_contract_id = None
         state.current_ticks = 0
@@ -1046,8 +1146,9 @@ async def stop_bot():
 
 
 @app.post("/api/accounts/refresh-balance")
-async def refresh_accounts_balance():
-    """Força sincronização imediata dos saldos de todas as contas conectadas."""
+async def refresh_accounts_balance(user: Dict[str, Any] = Depends(get_current_user)):
+    """Força sincronização imediata dos saldos de todas as contas conectadas do usuário."""
+    state = bot_manager.get_state(user["id"])
     await state.sync_accounts_balance()
     return {
         "status": "success",
@@ -1056,6 +1157,7 @@ async def refresh_accounts_balance():
         "secondary_balance": state.secondary_account.balance,
         "account_balance": state.account_balance
     }
+
 
 
 def persist_env_config(updates: Dict[str, Any]):
@@ -1117,7 +1219,8 @@ class ConfigUpdateRequest(BaseModel):
 
 
 @app.get("/api/config")
-async def get_config():
+async def get_config(user: Dict[str, Any] = Depends(get_current_user)):
+    state = bot_manager.get_state(user["id"])
     prim_accs = await asyncio.to_thread(state.primary_account.fetch_available_accounts)
     sec_accs = await asyncio.to_thread(state.secondary_account.fetch_available_accounts)
     return {
@@ -1158,7 +1261,7 @@ class AccountsListRequest(BaseModel):
 
 
 @app.post("/api/accounts/list")
-async def list_accounts(req: AccountsListRequest):
+async def list_accounts(req: AccountsListRequest, user: Dict[str, Any] = Depends(get_current_user)):
     try:
         token = req.token.strip()
         app_id = req.app_id.strip()
@@ -1169,12 +1272,13 @@ async def list_accounts(req: AccountsListRequest):
         accounts = await asyncio.to_thread(client.fetch_available_accounts)
         return {"status": "success", "accounts": accounts}
     except Exception as e:
-        logger.error(f"Erro ao listar contas: {e}")
+        logger.error(f"Erro ao listar contas [User {user['id']}]: {e}")
         return JSONResponse(status_code=500, content={"status": "error", "message": f"Erro ao listar contas na Deriv: {str(e)}"})
 
 
 @app.post("/api/config")
-async def update_config(cfg_in: ConfigUpdateRequest):
+async def update_config(cfg_in: ConfigUpdateRequest, user: Dict[str, Any] = Depends(get_current_user)):
+    state = bot_manager.get_state(user["id"])
     try:
         if cfg_in.stake_amount < 1.0:
             return JSONResponse(status_code=400, content={"status": "error", "message": "A Stake mínima exigida pela Deriv para Accumulators é $1.00 USD."})
@@ -1222,29 +1326,31 @@ async def update_config(cfg_in: ConfigUpdateRequest):
             state.max_loss_recovery_cap = max(1.0, float(cfg_in.max_loss_recovery_cap))
             state.config.max_loss_recovery_cap = state.max_loss_recovery_cap
 
-        if cfg_in.primary_token:
+        if cfg_in.primary_token is not None:
             state.primary_account.token = cfg_in.primary_token.strip()
             state.config.token = state.primary_account.token
-        if cfg_in.primary_app_id:
+        if cfg_in.primary_app_id is not None:
             state.primary_account.app_id = cfg_in.primary_app_id.strip()
             state.config.app_id = state.primary_account.app_id
-        if cfg_in.primary_account_id:
+        if cfg_in.primary_account_id is not None:
             state.primary_account.account_id = cfg_in.primary_account_id.strip()
             state.config.account_id = state.primary_account.account_id
 
-        if cfg_in.secondary_token:
+        if cfg_in.secondary_token is not None:
             state.secondary_account.token = cfg_in.secondary_token.strip()
             state.config.secondary_token = state.secondary_account.token
-        if cfg_in.secondary_app_id:
+        if cfg_in.secondary_app_id is not None:
             state.secondary_account.app_id = cfg_in.secondary_app_id.strip()
             state.config.secondary_app_id = state.secondary_account.app_id
-        if cfg_in.secondary_account_id:
+        if cfg_in.secondary_account_id is not None:
             state.secondary_account.account_id = cfg_in.secondary_account_id.strip()
             state.config.secondary_account_id = state.secondary_account.account_id
 
         # Atualiza saldos se credenciais mudaram (em thread separada para não travar)
-        await asyncio.to_thread(state.primary_account.fetch_balance)
-        await asyncio.to_thread(state.secondary_account.fetch_balance)
+        if state.primary_account.is_configured():
+            await asyncio.to_thread(state.primary_account.fetch_balance)
+        if state.secondary_account.is_configured():
+            await asyncio.to_thread(state.secondary_account.fetch_balance)
 
         # Se o usuário solicitou iniciar como uma nova sessão de teste
         if cfg_in.start_new_session:
@@ -1253,7 +1359,6 @@ async def update_config(cfg_in: ConfigUpdateRequest):
                 state.current_contract_id = None
                 state.start_new_session("Parâmetros atualizados no painel")
         elif state.risk.is_stopped:
-            # Reavalia o RiskManager se estava bloqueado por meta anterior
             if (state.risk.daily_pnl > -abs(state.config.daily_stop_loss_usd) and
                 state.risk.daily_pnl < abs(state.config.daily_take_profit_usd) and
                 state.risk.current_loss_streak < state.config.max_consecutive_losses):
@@ -1261,7 +1366,7 @@ async def update_config(cfg_in: ConfigUpdateRequest):
                 state.risk.stop_reason = ""
                 state.status_message = "Parado" if not state.is_running else "Ativo"
 
-        # Persiste no Banco de Dados SQLite (Persistência Garantida)
+        # Persiste no Banco de Dados SQLite isolado para este usuário
         state.db.save_settings({
             "growth_rate": state.config.growth_rate,
             "stake_amount": state.config.stake_amount,
@@ -1287,39 +1392,40 @@ async def update_config(cfg_in: ConfigUpdateRequest):
             "secondary_token": state.secondary_account.token,
             "secondary_app_id": state.secondary_account.app_id,
             "secondary_account_id": state.secondary_account.account_id
-        }, reason="Ajuste pelo painel web")
+        }, user_id=user["id"], reason="Ajuste pelo painel web")
 
-        # Persiste no .env para reter entre reinicializações
-        persist_env_config({
-            "GROWTH_RATE": f"{state.config.growth_rate:.2f}",
-            "STAKE_AMOUNT": f"{state.config.stake_amount:.2f}",
-            "EXIT_TICKS": str(state.config.exit_ticks),
-            "SESSION_STOP_LOSS_USD": f"{state.config.session_stop_loss_usd:.2f}",
-            "SESSION_TAKE_PROFIT_USD": f"{state.config.session_take_profit_usd:.2f}",
-            "DAILY_STOP_LOSS_USD": f"{state.config.daily_stop_loss_usd:.2f}",
-            "DAILY_TAKE_PROFIT_USD": f"{state.config.daily_take_profit_usd:.2f}",
-            "MAX_CONSECUTIVE_LOSSES": str(state.config.max_consecutive_losses),
-            "WAIT_CYCLE_RESET": str(state.config.wait_cycle_reset).lower(),
-            "MAX_ENTRY_TICK": str(state.config.max_entry_tick),
-            "OPERATION_MODE": state.operation_mode,
-            "SHIELD_TRIGGER_LOSSES": str(state.shield_trigger_losses),
-            "PRIMARY_LOSS_ACTION": state.primary_loss_action,
-            "PRIMARY_RECOVERY_MAX_STEPS": str(state.primary_recovery_max_steps),
-            "PRIMARY_MARTINGALE_MULTIPLIER": f"{state.primary_martingale_multiplier:.2f}",
-            "FRACTIONAL_INSTALLMENTS": str(state.fractional_installments),
-            "INCLUDE_BASE_PROFIT": str(state.include_base_profit).lower(),
-            "MAX_LOSS_RECOVERY_CAP": f"{state.max_loss_recovery_cap:.2f}",
-            "DERIV_PRIMARY_API_TOKEN": state.primary_account.token,
-            "DERIV_PRIMARY_APP_ID": state.primary_account.app_id,
-            "DERIV_PRIMARY_ACCOUNT_ID": state.primary_account.account_id,
-            "DERIV_SECONDARY_API_TOKEN": state.secondary_account.token,
-            "DERIV_SECONDARY_APP_ID": state.secondary_account.app_id,
-            "DERIV_SECONDARY_ACCOUNT_ID": state.secondary_account.account_id
-        })
+        # Persiste no .env apenas se for o usuário admin (ID 1)
+        if user.get("is_admin") or user["id"] == 1:
+            persist_env_config({
+                "GROWTH_RATE": f"{state.config.growth_rate:.2f}",
+                "STAKE_AMOUNT": f"{state.config.stake_amount:.2f}",
+                "EXIT_TICKS": str(state.config.exit_ticks),
+                "SESSION_STOP_LOSS_USD": f"{state.config.session_stop_loss_usd:.2f}",
+                "SESSION_TAKE_PROFIT_USD": f"{state.config.session_take_profit_usd:.2f}",
+                "DAILY_STOP_LOSS_USD": f"{state.config.daily_stop_loss_usd:.2f}",
+                "DAILY_TAKE_PROFIT_USD": f"{state.config.daily_take_profit_usd:.2f}",
+                "MAX_CONSECUTIVE_LOSSES": str(state.config.max_consecutive_losses),
+                "WAIT_CYCLE_RESET": str(state.config.wait_cycle_reset).lower(),
+                "MAX_ENTRY_TICK": str(state.config.max_entry_tick),
+                "OPERATION_MODE": state.operation_mode,
+                "SHIELD_TRIGGER_LOSSES": str(state.shield_trigger_losses),
+                "PRIMARY_LOSS_ACTION": state.primary_loss_action,
+                "PRIMARY_RECOVERY_MAX_STEPS": str(state.primary_recovery_max_steps),
+                "PRIMARY_MARTINGALE_MULTIPLIER": f"{state.primary_martingale_multiplier:.2f}",
+                "FRACTIONAL_INSTALLMENTS": str(state.fractional_installments),
+                "INCLUDE_BASE_PROFIT": str(state.include_base_profit).lower(),
+                "MAX_LOSS_RECOVERY_CAP": f"{state.max_loss_recovery_cap:.2f}",
+                "DERIV_PRIMARY_API_TOKEN": state.primary_account.token,
+                "DERIV_PRIMARY_APP_ID": state.primary_account.app_id,
+                "DERIV_PRIMARY_ACCOUNT_ID": state.primary_account.account_id,
+                "DERIV_SECONDARY_API_TOKEN": state.secondary_account.token,
+                "DERIV_SECONDARY_APP_ID": state.secondary_account.app_id,
+                "DERIV_SECONDARY_ACCOUNT_ID": state.secondary_account.account_id
+            })
 
         log_msg = f"⚙️ Configurações salvas: Modo {state.operation_mode} | Gatilho {state.shield_trigger_losses}L | Stake ${state.config.stake_amount:.2f} | Growth {state.config.growth_rate*100:.0f}% | Saída {state.config.exit_ticks}T"
         state.latest_log = log_msg
-        logger.info(log_msg)
+        logger.info(f"{log_msg} [User {user['id']}]")
         await state.notify_clients()
 
         return {
@@ -1339,7 +1445,7 @@ async def update_config(cfg_in: ConfigUpdateRequest):
             }
         }
     except Exception as e:
-        logger.error(f"Erro ao salvar configurações: {e}", exc_info=True)
+        logger.error(f"Erro ao salvar configurações [User {user['id']}]: {e}", exc_info=True)
         return JSONResponse(status_code=500, content={"status": "error", "message": f"Erro interno ao salvar configurações: {str(e)}"})
 
 
@@ -1347,8 +1453,9 @@ async def update_config(cfg_in: ConfigUpdateRequest):
 # ENDPOINTS DE HISTÓRICO DE SESSÕES
 # ==========================================
 @app.get("/api/sessions")
-async def get_sessions():
-    sessions = state.session_manager.get_all_sessions()
+async def get_sessions(user: Dict[str, Any] = Depends(get_current_user)):
+    state = bot_manager.get_state(user["id"])
+    sessions = state.db.get_user_sessions(user["id"])
     return JSONResponse(content={
         "sessions": sessions,
         "current_session": {
@@ -1356,15 +1463,15 @@ async def get_sessions():
             "number": state.session_number,
             "start_time": state.session_start_time.strftime("%d/%m/%Y %H:%M:%S"),
             "total_trades": state.risk.total_trades,
-            "pnl": state.risk.daily_pnl
+            "pnl": state.risk.session_pnl
         }
     })
 
 
 @app.post("/api/session/new")
-async def new_session():
+async def new_session(user: Dict[str, Any] = Depends(get_current_user)):
+    state = bot_manager.get_state(user["id"])
     try:
-        # Se o robô não estiver rodando, libera a nova sessão sempre sem travar o usuário
         if not state.is_running:
             state.in_trade = False
             state.current_contract_id = None
@@ -1383,38 +1490,40 @@ async def new_session():
             "session_number": state.session_number
         }
     except Exception as e:
-        logger.error(f"Erro ao iniciar nova sessão: {e}")
+        logger.error(f"Erro ao iniciar nova sessão [User {user['id']}]: {e}")
         return JSONResponse(status_code=500, content={"status": "error", "message": f"Erro interno ao iniciar sessão: {str(e)}"})
 
 
 @app.delete("/api/sessions/{session_id}")
-async def delete_session(session_id: str):
-    success = state.session_manager.delete_session(session_id)
+async def delete_session(session_id: str, user: Dict[str, Any] = Depends(get_current_user)):
+    state = bot_manager.get_state(user["id"])
+    success = state.db.delete_user_session(user["id"], session_id)
     if success:
         await state.notify_clients()
         return {"status": "success", "message": "Sessão removida do histórico."}
     return JSONResponse(status_code=404, content={"status": "error", "message": "Sessão não encontrada."})
 
 
-@app.delete("/api/sessions")
-async def clear_all_sessions():
-    state.session_manager.clear_all()
-    await state.notify_clients()
-    return {"status": "success", "message": "Todo o histórico de sessões foi limpo com sucesso."}
-
-
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
+    token = ws.query_params.get("token") or ws.cookies.get("dq_token")
+    user = auth.get_user_by_token(token) if token else None
+    if not user:
+        await ws.close(code=1008)
+        return
+
+    state = bot_manager.get_state(user["id"])
     await ws.accept()
     state.connected_websockets.add(ws)
-    # Envia estado inicial imediato
-    await ws.send_json(state.to_dict())
+    await ws.send_json({**state.to_dict(), "current_user": user})
     try:
         while True:
-            # Mantém conexão viva aguardando mensagens (se houver) sem polling
             await ws.receive_text()
     except WebSocketDisconnect:
         state.connected_websockets.discard(ws)
+    except Exception:
+        state.connected_websockets.discard(ws)
+
 
 
 if __name__ == "__main__":

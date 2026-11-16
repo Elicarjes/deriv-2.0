@@ -30,7 +30,8 @@ class SettingsDB:
             cursor = conn.cursor()
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS settings (
-                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER UNIQUE DEFAULT 1,
                     growth_rate REAL NOT NULL DEFAULT 0.05,
                     stake_amount REAL NOT NULL DEFAULT 1.00,
                     exit_ticks INTEGER NOT NULL DEFAULT 6,
@@ -172,11 +173,11 @@ class SettingsDB:
                 conn.commit()
                 logger.info("📦 Banco de dados SQLite semeado com configurações iniciais com sucesso.")
 
-    def get_settings(self) -> Dict[str, Any]:
-        """Recupera as configurações ativas do banco SQLite."""
+    def get_settings(self, user_id: int = 1) -> Dict[str, Any]:
+        """Recupera as configurações ativas do usuário no banco SQLite."""
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM settings WHERE id = 1")
+            cursor.execute("SELECT * FROM settings WHERE user_id = ? OR id = ? ORDER BY id DESC LIMIT 1", (user_id, user_id))
             row = cursor.fetchone()
             if not row:
                 return {}
@@ -186,12 +187,12 @@ class SettingsDB:
             data["include_base_profit"] = bool(data.get("include_base_profit", 1))
             return data
 
-    def save_settings(self, updates: Dict[str, Any], reason: str = "Ajuste manual no painel") -> Dict[str, Any]:
-        """Salva as alterações no banco SQLite com auditoria de versão."""
-        current = self.get_settings()
+    def save_settings(self, updates: Dict[str, Any], user_id: int = 1, reason: str = "Ajuste manual no painel") -> Dict[str, Any]:
+        """Salva as alterações no banco SQLite por usuário com auditoria de versão."""
+        current = self.get_settings(user_id=user_id)
         if not current:
             self.seed_if_empty(updates)
-            current = self.get_settings()
+            current = self.get_settings(user_id=user_id)
 
         # Mescla os valores atualizados
         merged = {**current, **updates}
@@ -224,15 +225,81 @@ class SettingsDB:
 
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute(f"UPDATE settings SET {', '.join(set_clauses)} WHERE id = 1", values)
+            values.append(user_id)
+            cursor.execute(f"UPDATE settings SET {', '.join(set_clauses)} WHERE user_id = ? OR id = ?", (*values, user_id))
 
             # Grava histórico de versão
             import json
             cursor.execute(
                 "INSERT INTO settings_history (changed_at, reason, config_json) VALUES (?, ?, ?)",
-                (merged["updated_at"], reason, json.dumps(merged))
+                (merged["updated_at"], f"User {user_id}: {reason}", json.dumps(merged))
             )
             conn.commit()
 
-        logger.info(f"💾 Configurações salvas no SQLite com sucesso ({reason}).")
-        return self.get_settings()
+        logger.info(f"💾 Configurações do usuário {user_id} salvas no SQLite ({reason}).")
+        return self.get_settings(user_id=user_id)
+
+    def get_user_sessions(self, user_id: int) -> list:
+        """Retorna todas as sessões de trade arquivadas para o usuário."""
+        import json
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT session_id, session_number, start_time, duration, summary_json, trades_json, config_json, created_at
+                FROM user_trade_sessions
+                WHERE user_id = ?
+                ORDER BY session_number DESC
+            """, (user_id,))
+            sessions = []
+            for row in cursor.fetchall():
+                try:
+                    summary = json.loads(row["summary_json"])
+                    trades = json.loads(row["trades_json"])
+                    config = json.loads(row["config_json"])
+                except Exception:
+                    summary, trades, config = {}, [], {}
+                sessions.append({
+                    "id": row["session_id"],
+                    "number": row["session_number"],
+                    "start_time": row["start_time"],
+                    "duration": row["duration"],
+                    "summary": summary,
+                    "trades": trades,
+                    "config": config,
+                    "created_at": row["created_at"]
+                })
+            return sessions
+
+    def archive_user_session(self, user_id: int, session_record: Dict[str, Any]):
+        """Arquiva uma sessão de trade para o usuário no banco de dados."""
+        import json
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            cursor.execute("""
+                INSERT OR REPLACE INTO user_trade_sessions (
+                    session_id, user_id, session_number, start_time, duration,
+                    summary_json, trades_json, config_json, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                session_record["id"],
+                user_id,
+                session_record.get("number", 1),
+                session_record.get("start_time", ""),
+                session_record.get("duration", "0m"),
+                json.dumps(session_record.get("summary", {})),
+                json.dumps(session_record.get("trades", [])),
+                json.dumps(session_record.get("config", {})),
+                now_str
+            ))
+            conn.commit()
+        logger.info(f"📁 Sessão #{session_record.get('number')} do usuário {user_id} arquivada no SQLite.")
+
+    def delete_user_session(self, user_id: int, session_id: str) -> bool:
+        """Exclui uma sessão arquivada do usuário."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM user_trade_sessions WHERE session_id = ? AND user_id = ?", (session_id, user_id))
+            conn.commit()
+            return cursor.rowcount > 0
+
