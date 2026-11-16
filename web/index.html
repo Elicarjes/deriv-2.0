@@ -385,8 +385,13 @@
             <i data-lucide="sliders" class="w-4 h-4"></i>
           </div>
           <div>
-            <h3 class="text-sm font-bold text-slate-100">Parâmetros da Estratégia & Risco</h3>
-            <p class="text-[11px] text-slate-400">Ajuste e salve parâmetros em tempo real</p>
+            <h3 class="text-sm font-bold text-slate-100 flex items-center gap-2">
+              Parâmetros da Estratégia & Risco
+              <span class="px-2 py-0.5 rounded text-[9px] font-mono font-bold bg-cyan-950 border border-cyan-500/40 text-cyan-300 flex items-center gap-1">
+                <i data-lucide="database" class="w-2.5 h-2.5"></i> SQLite Ativo
+              </span>
+            </h3>
+            <p class="text-[11px] text-slate-400">Salvo em banco de dados SQLite local (<code class="text-slate-300">data/settings.db</code>)</p>
           </div>
         </div>
         <button type="button" onclick="closeConfigModal()" class="text-slate-400 hover:text-slate-200 p-1.5 rounded-lg hover:bg-slate-800 transition">
@@ -779,23 +784,34 @@
       const modeBadgeText = document.getElementById("mode-badge-text");
       const modeBadgeCont = document.getElementById("mode-badge-container");
       if (modeBadgeText && modeBadgeCont) {
+        const curStake = data.current_stake || data.next_stake || data.stake_amount || 1.0;
         if (data.operation_mode === "shield_combined") {
           if (data.primary_gale_step > 0) {
-            modeBadgeText.innerText = `🔁 RECUPERAÇÃO REAL (Gale ${data.primary_gale_step}/${data.primary_recovery_max_steps || 1})`;
+            modeBadgeText.innerText = `🔁 GALE REAL [${data.primary_gale_step}/${data.primary_recovery_max_steps || 1}] ($${curStake.toFixed(2)})`;
             modeBadgeCont.className = "bg-amber-950/90 border border-amber-500/80 rounded-lg px-2.5 py-1.5 text-xs flex items-center gap-1.5 animate-pulse text-amber-300 font-bold";
           } else if (data.sniper_armed) {
-            modeBadgeText.innerText = "🎯 SNIPER REAL ARMADO";
+            modeBadgeText.innerText = `🎯 SNIPER REAL ARMADO ($${curStake.toFixed(2)})`;
             modeBadgeCont.className = "bg-rose-950/80 border border-rose-500/80 rounded-lg px-2.5 py-1.5 text-xs flex items-center gap-1.5 animate-pulse text-rose-300 font-bold";
           } else {
             modeBadgeText.innerText = `🛡️ Escudo Demo (${data.shield_losses_count || 0}/${data.shield_trigger_losses || 3} L)`;
             modeBadgeCont.className = "bg-purple-950/70 border border-purple-500/50 rounded-lg px-2.5 py-1.5 text-xs flex items-center gap-1.5 text-purple-300 font-semibold";
           }
         } else if (data.operation_mode === "primary_only") {
-          modeBadgeText.innerText = "🎯 Somente Real";
-          modeBadgeCont.className = "bg-emerald-950/70 border border-emerald-500/50 rounded-lg px-2.5 py-1.5 text-xs flex items-center gap-1.5 text-emerald-300 font-semibold";
+          if (data.primary_gale_step > 0) {
+            modeBadgeText.innerText = `🔁 GALE REAL [${data.primary_gale_step}/${data.primary_recovery_max_steps || 1}] ($${curStake.toFixed(2)})`;
+            modeBadgeCont.className = "bg-amber-950/90 border border-amber-500/80 rounded-lg px-2.5 py-1.5 text-xs flex items-center gap-1.5 animate-pulse text-amber-300 font-bold";
+          } else {
+            modeBadgeText.innerText = "🎯 Somente Real";
+            modeBadgeCont.className = "bg-emerald-950/70 border border-emerald-500/50 rounded-lg px-2.5 py-1.5 text-xs flex items-center gap-1.5 text-emerald-300 font-semibold";
+          }
         } else {
-          modeBadgeText.innerText = "🧪 Somente Demo";
-          modeBadgeCont.className = "bg-amber-950/70 border border-amber-500/50 rounded-lg px-2.5 py-1.5 text-xs flex items-center gap-1.5 text-amber-300 font-semibold";
+          if (data.primary_gale_step > 0) {
+            modeBadgeText.innerText = `🔁 GALE DEMO [${data.primary_gale_step}/${data.primary_recovery_max_steps || 1}] ($${curStake.toFixed(2)})`;
+            modeBadgeCont.className = "bg-amber-950/90 border border-amber-500/80 rounded-lg px-2.5 py-1.5 text-xs flex items-center gap-1.5 animate-pulse text-amber-300 font-bold";
+          } else {
+            modeBadgeText.innerText = "🧪 Somente Demo";
+            modeBadgeCont.className = "bg-amber-950/70 border border-amber-500/50 rounded-lg px-2.5 py-1.5 text-xs flex items-center gap-1.5 text-amber-300 font-semibold";
+          }
         }
       }
 

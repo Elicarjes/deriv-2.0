@@ -25,6 +25,7 @@ from risk_manager import RiskManager
 from asset_selector import find_safest_asset
 from session_manager import SessionManager
 from account_client import AccountClient
+from settings_db import SettingsDB
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("WebServer")
@@ -37,6 +38,61 @@ WEB_DIR = BASE_DIR / "web"
 
 class DashboardState:
     def __init__(self, config: BotConfig):
+        # 1. Banco de Dados SQLite de Configurações (Persistência Definitiva)
+        self.db = SettingsDB(BASE_DIR / "data" / "settings.db")
+        initial_dict = {
+            "growth_rate": config.growth_rate,
+            "stake_amount": config.stake_amount,
+            "exit_ticks": config.exit_ticks,
+            "daily_stop_loss_usd": config.daily_stop_loss_usd,
+            "daily_take_profit_usd": config.daily_take_profit_usd,
+            "max_consecutive_losses": config.max_consecutive_losses,
+            "wait_cycle_reset": config.wait_cycle_reset,
+            "max_entry_tick": config.max_entry_tick,
+            "operation_mode": config.operation_mode,
+            "shield_trigger_losses": config.shield_trigger_losses,
+            "primary_loss_action": config.primary_loss_action,
+            "primary_recovery_max_steps": config.primary_recovery_max_steps,
+            "primary_martingale_multiplier": config.primary_martingale_multiplier,
+            "primary_token": config.token,
+            "primary_app_id": config.app_id,
+            "primary_account_id": config.account_id,
+            "secondary_token": config.secondary_token,
+            "secondary_app_id": config.secondary_app_id,
+            "secondary_account_id": config.secondary_account_id,
+            "symbol": config.symbol,
+            "auto_select_best_asset": config.auto_select_best_asset
+        }
+        self.db.seed_if_empty(initial_dict)
+        db_cfg = self.db.get_settings()
+        if db_cfg:
+            config.growth_rate = float(db_cfg.get("growth_rate", config.growth_rate))
+            config.stake_amount = float(db_cfg.get("stake_amount", config.stake_amount))
+            config.exit_ticks = int(db_cfg.get("exit_ticks", config.exit_ticks))
+            config.daily_stop_loss_usd = float(db_cfg.get("daily_stop_loss_usd", config.daily_stop_loss_usd))
+            config.daily_take_profit_usd = float(db_cfg.get("daily_take_profit_usd", config.daily_take_profit_usd))
+            config.max_consecutive_losses = int(db_cfg.get("max_consecutive_losses", config.max_consecutive_losses))
+            config.wait_cycle_reset = bool(db_cfg.get("wait_cycle_reset", config.wait_cycle_reset))
+            config.max_entry_tick = int(db_cfg.get("max_entry_tick", config.max_entry_tick))
+            config.operation_mode = str(db_cfg.get("operation_mode", config.operation_mode))
+            config.shield_trigger_losses = int(db_cfg.get("shield_trigger_losses", config.shield_trigger_losses))
+            config.primary_loss_action = str(db_cfg.get("primary_loss_action", config.primary_loss_action))
+            config.primary_recovery_max_steps = int(db_cfg.get("primary_recovery_max_steps", config.primary_recovery_max_steps))
+            config.primary_martingale_multiplier = float(db_cfg.get("primary_martingale_multiplier", config.primary_martingale_multiplier))
+            if db_cfg.get("primary_token"):
+                config.token = str(db_cfg["primary_token"])
+            if db_cfg.get("primary_app_id"):
+                config.app_id = str(db_cfg["primary_app_id"])
+            if db_cfg.get("primary_account_id"):
+                config.account_id = str(db_cfg["primary_account_id"])
+            if db_cfg.get("secondary_token"):
+                config.secondary_token = str(db_cfg["secondary_token"])
+            if db_cfg.get("secondary_app_id"):
+                config.secondary_app_id = str(db_cfg["secondary_app_id"])
+            if db_cfg.get("secondary_account_id"):
+                config.secondary_account_id = str(db_cfg["secondary_account_id"])
+            logger.info("📦 Configurações operacionais carregadas com sucesso do Banco de Dados SQLite.")
+
         self.config = config
         self.risk = RiskManager(config)
         self.session_manager = SessionManager(BASE_DIR / "data" / "sessions.json")
@@ -73,7 +129,7 @@ class DashboardState:
         self.shield_losses = 0
         self.shield_pnl = 0.0
 
-        # Recuperação / Martingale na Primária pós-loss
+        # Recuperação / Martingale
         self.primary_loss_action = config.primary_loss_action
         self.primary_recovery_max_steps = config.primary_recovery_max_steps
         self.primary_martingale_multiplier = config.primary_martingale_multiplier
@@ -118,12 +174,23 @@ class DashboardState:
             return self.primary_account
         return self.secondary_account
 
-    def get_current_stake(self, account: AccountClient) -> float:
-        """Calcula o valor da stake, aplicando Martingale na Primária se estiver em recuperação."""
-        if account.account_role == "primary" and self.primary_gale_step > 0:
+    def get_current_stake(self, account: Optional[AccountClient] = None) -> float:
+        """
+        Calcula o valor da stake, aplicando Martingale se a recuperação estiver ativa
+        e o nível de gale for maior que 0.
+        """
+        acc = account or self.get_active_account()
+
+        # No modo escudo combinado, o Martingale só é acionado na conta primária (Sniper Real)
+        if self.operation_mode == "shield_combined" and acc.account_role != "primary":
+            return self.config.stake_amount
+
+        # Se a estratégia de recuperação com Martingale estiver ativa
+        if self.primary_loss_action == "recovery_martingale" and self.primary_gale_step > 0:
             mult = self.primary_martingale_multiplier ** self.primary_gale_step
             calc_stake = round(self.config.stake_amount * mult, 2)
             return max(1.0, calc_stake)
+
         return self.config.stake_amount
 
     def archive_current_session(self) -> Optional[Dict[str, Any]]:
@@ -204,6 +271,8 @@ class DashboardState:
             "account_limits": self.account_limits,
             "growth_rate": self.config.growth_rate,
             "stake_amount": self.config.stake_amount,
+            "current_stake": self.get_current_stake(active_acc),
+            "next_stake": self.get_current_stake(active_acc),
             "daily_stop_loss_usd": self.config.daily_stop_loss_usd,
             "daily_take_profit_usd": self.config.daily_take_profit_usd,
             "max_consecutive_losses": self.config.max_consecutive_losses,
@@ -392,58 +461,94 @@ class BotRunner:
         except Exception as e:
             logger.debug(f"Aviso na checagem inicial de portfolio: {e}")
 
-    def _handle_shield_post_trade(self, account: AccountClient, profit: float) -> bool:
-        """Processa a transição de estado da Conta Escudo e retorna True se houver troca de conta."""
-        if self.st.operation_mode != "shield_combined":
-            return False
-
-        if account.account_role == "secondary":
-            if profit <= 0:
-                self.st.shield_losses_count += 1
-                if self.st.shield_losses_count >= self.st.shield_trigger_losses:
-                    self.st.sniper_armed = True
-                    self.st.latest_log = f"🎯 GATILHO ATIVADO: {self.st.shield_losses_count} derrotas consecutivas no Escudo! O PRÓXIMO TRADE SERÁ NA CONTA REAL!"
-                    logger.warning(self.st.latest_log)
+    def _handle_post_trade(self, account: AccountClient, profit: float) -> bool:
+        """
+        Processa a transição de estado pós-trade para todos os modos:
+        - Modo Escudo Combinado (shield_combined): monitora losses no Escudo Demo para armar Sniper Real
+          e executa Martingale na Primária se ativado.
+        - Modos Somente Primária / Secundária: executa Martingale diretamente na conta ativa.
+        Retorna True se for necessário alternar de conexão WebSocket (troca de conta).
+        """
+        # ========================================================
+        # MODO 1: Escudo Combinado (Demo -> Sniper na Real)
+        # ========================================================
+        if self.st.operation_mode == "shield_combined":
+            if account.account_role == "secondary":
+                if profit <= 0:
+                    self.st.shield_losses_count += 1
+                    if self.st.shield_losses_count >= self.st.shield_trigger_losses:
+                        self.st.sniper_armed = True
+                        self.st.latest_log = f"🎯 GATILHO ATIVADO: {self.st.shield_losses_count} derrotas consecutivas no Escudo! O PRÓXIMO TRADE SERÁ NA CONTA REAL!"
+                        logger.warning(self.st.latest_log)
+                        return True
+                    else:
+                        self.st.latest_log = f"🛡️ Escudo Demo: {self.st.shield_losses_count}/{self.st.shield_trigger_losses} derrotas para armar Sniper Real."
+                        return False
+                else:
+                    self.st.shield_losses_count = 0
+                    self.st.sniper_armed = False
+                    self.st.latest_log = f"🛡️ Vitória no Escudo Demo (+${profit:.2f})! Contador de perdas resetado (0/{self.st.shield_trigger_losses})."
+                    return False
+            else:
+                # Trade executado na Conta Primária (Real)
+                if profit > 0:
+                    if self.st.primary_gale_step > 0:
+                        self.st.latest_log = f"🎉 VITÓRIA NA RECUPERAÇÃO REAL (+${profit:.2f})! Martingale concluído com sucesso. Retornando ao Escudo Demo."
+                    else:
+                        self.st.latest_log = f"💰 SNIPER CONCLUÍDO COM VITÓRIA (+${profit:.2f})! Retornando ao Escudo Demo."
+                    logger.info(self.st.latest_log)
+                    self.st.primary_gale_step = 0
+                    self.st.sniper_armed = False
+                    self.st.shield_losses_count = 0
                     return True
                 else:
-                    self.st.latest_log = f"🛡️ Escudo Demo: {self.st.shield_losses_count}/{self.st.shield_trigger_losses} derrotas para armar Sniper Real."
-            else:
-                self.st.shield_losses_count = 0
-                self.st.sniper_armed = False
-                self.st.latest_log = f"🛡️ Vitória no Escudo Demo (+${profit:.2f})! Contador de perdas resetado (0/{self.st.shield_trigger_losses})."
+                    # Loss na Conta Primária
+                    if (self.st.primary_loss_action == "recovery_martingale" and 
+                        self.st.primary_gale_step < self.st.primary_recovery_max_steps and 
+                        self.st.risk.can_trade()):
+                        self.st.primary_gale_step += 1
+                        next_stake = self.st.get_current_stake(account)
+                        self.st.latest_log = f"🔁 LOSS NA PRIMÁRIA! Ativando Martingale [Nível {self.st.primary_gale_step}/{self.st.primary_recovery_max_steps}] com Stake ${next_stake:.2f}."
+                        logger.warning(self.st.latest_log)
+                        # Retorna False: Permanece na Conta Primária para disparar a próxima entrada com stake multiplicada!
+                        return False
+                    else:
+                        if self.st.primary_gale_step > 0:
+                            self.st.latest_log = f"🛑 Limite de {self.st.primary_recovery_max_steps} nível(is) de Martingale atingido na Primária. Retornando ao Escudo Demo."
+                        else:
+                            self.st.latest_log = f"⚠️ Trade na Primária finalizado com Loss (${profit:.2f}). Retornando ao Escudo Demo para nova sondagem."
+                        logger.warning(self.st.latest_log)
+                        self.st.primary_gale_step = 0
+                        self.st.sniper_armed = False
+                        self.st.shield_losses_count = 0
+                        return True
+
+        # ========================================================
+        # MODOS 2 e 3: Somente Primária (Real) ou Somente Secundária (Demo)
+        # ========================================================
         else:
-            # Trade encerrado na Conta Primária (Real)
             if profit > 0:
+                if self.st.primary_gale_step > 0:
+                    self.st.latest_log = f"🎉 VITÓRIA NA RECUPERAÇÃO (+${profit:.2f})! Martingale finalizado. Resetando para stake base (${self.st.config.stake_amount:.2f})."
+                    logger.info(self.st.latest_log)
                 self.st.primary_gale_step = 0
-                self.st.sniper_armed = False
-                self.st.shield_losses_count = 0
-                self.st.latest_log = f"💰 SNIPER CONCLUÍDO COM VITÓRIA (+${profit:.2f})! Retornando ao Escudo Demo."
-                logger.info(self.st.latest_log)
-                return True
+                return False
             else:
-                # Ocorreu derrota na Conta Primária
-                # Verifica se a regra configurada é Recuperação com Martingale na própria Primária
+                # Ocorreu derrota
                 if (self.st.primary_loss_action == "recovery_martingale" and 
                     self.st.primary_gale_step < self.st.primary_recovery_max_steps and 
                     self.st.risk.can_trade()):
                     self.st.primary_gale_step += 1
                     next_stake = self.st.get_current_stake(account)
-                    self.st.latest_log = f"🔁 LOSS NA PRIMÁRIA! Ativando Recuperação Martingale [Tentativa {self.st.primary_gale_step}/{self.st.primary_recovery_max_steps}] com Stake ${next_stake:.2f}."
+                    self.st.latest_log = f"🔁 LOSS DETECTADO! Ativando Martingale [Nível {self.st.primary_gale_step}/{self.st.primary_recovery_max_steps}] com Stake ${next_stake:.2f}."
                     logger.warning(self.st.latest_log)
-                    # Retorna False: NÃO troca de conexão! Permanece na Conta Primária para tentar recuperar!
                     return False
                 else:
                     if self.st.primary_gale_step > 0:
-                        self.st.latest_log = f"🛑 Limite de {self.st.primary_recovery_max_steps} tentativa(s) de recuperação atingido na Primária. Retornando ao Escudo Demo."
-                    else:
-                        self.st.latest_log = f"⚠️ Trade na Primária finalizado (${profit:.2f}). Retornando ao Escudo Demo para nova sondagem."
-                    logger.warning(self.st.latest_log)
+                        self.st.latest_log = f"🛑 Limite de {self.st.primary_recovery_max_steps} nível(is) de Martingale atingido. Resetando para stake base (${self.st.config.stake_amount:.2f})."
+                        logger.warning(self.st.latest_log)
                     self.st.primary_gale_step = 0
-                    self.st.sniper_armed = False
-                    self.st.shield_losses_count = 0
-                    return True
-
-        return False
+                    return False
 
     async def run_loop(self):
         self.st.is_running = True
@@ -638,7 +743,7 @@ class BotRunner:
                                         stake=current_stake
                                     )
                                     trade_done = True
-                                    account_switched = self._handle_shield_post_trade(target_account, p_final)
+                                    account_switched = self._handle_post_trade(target_account, p_final)
                                     break
 
                                 # D. Cash Out Automatizado ao atingir os ticks estipulados
@@ -671,7 +776,7 @@ class BotRunner:
                                         )
                                         self.st.latest_log = f"CASH OUT CONFIRMADO: +${net:.2f} no {self.st.current_ticks}º tick ({target_account.name}) [Stake ${current_stake:.2f}]"
                                         trade_done = True
-                                        account_switched = self._handle_shield_post_trade(target_account, net)
+                                        account_switched = self._handle_post_trade(target_account, net)
                                         break
 
                             if poc_sub:
@@ -974,6 +1079,29 @@ async def update_config(cfg_in: ConfigUpdateRequest):
                 state.risk.is_stopped = False
                 state.risk.stop_reason = ""
                 state.status_message = "Parado" if not state.is_running else "Ativo"
+
+        # Persiste no Banco de Dados SQLite (Persistência Garantida)
+        state.db.save_settings({
+            "growth_rate": state.config.growth_rate,
+            "stake_amount": state.config.stake_amount,
+            "exit_ticks": state.config.exit_ticks,
+            "daily_stop_loss_usd": state.config.daily_stop_loss_usd,
+            "daily_take_profit_usd": state.config.daily_take_profit_usd,
+            "max_consecutive_losses": state.config.max_consecutive_losses,
+            "wait_cycle_reset": state.config.wait_cycle_reset,
+            "max_entry_tick": state.config.max_entry_tick,
+            "operation_mode": state.operation_mode,
+            "shield_trigger_losses": state.shield_trigger_losses,
+            "primary_loss_action": state.primary_loss_action,
+            "primary_recovery_max_steps": state.primary_recovery_max_steps,
+            "primary_martingale_multiplier": state.primary_martingale_multiplier,
+            "primary_token": state.primary_account.token,
+            "primary_app_id": state.primary_account.app_id,
+            "primary_account_id": state.primary_account.account_id,
+            "secondary_token": state.secondary_account.token,
+            "secondary_app_id": state.secondary_account.app_id,
+            "secondary_account_id": state.secondary_account.account_id
+        }, reason="Ajuste pelo painel web")
 
         # Persiste no .env para reter entre reinicializações
         persist_env_config({
