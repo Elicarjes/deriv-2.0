@@ -59,12 +59,6 @@
 
     <!-- Barra de Status e Controles com Dimensões Fixas -->
     <div class="flex items-center gap-3">
-      <!-- Badge Modo de Operação & Sniper -->
-      <div id="mode-badge-container" class="bg-slate-800/80 border border-slate-700/80 rounded-lg px-2.5 py-1.5 text-xs flex items-center gap-1.5">
-        <span class="text-slate-400">Modo:</span>
-        <span id="mode-badge-text" class="font-semibold text-cyan-300">Escudo Demo</span>
-      </div>
-
       <!-- Identificação da Conta Ativa -->
       <div class="bg-slate-800/80 border border-slate-700/80 rounded-lg px-3 py-1.5 text-xs flex items-center gap-2">
         <span class="text-slate-400">Ativa:</span>
@@ -254,13 +248,13 @@
     </div>
 
     <!-- Monitor de Trade em Execução com Altura Fixa (Sem tremer a tela) -->
-    <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 shadow-lg min-h-[92px] flex items-center justify-between">
+    <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 shadow-lg min-h-[92px] flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
       <div class="flex items-center gap-4">
-        <div id="trade-indicator" class="w-10 h-10 rounded-xl bg-slate-800 flex items-center justify-center border border-slate-700">
+        <div id="trade-indicator" class="w-10 h-10 rounded-xl bg-slate-800 flex items-center justify-center border border-slate-700 flex-shrink-0">
           <i data-lucide="clock" class="w-5 h-5 text-slate-400"></i>
         </div>
         <div>
-          <div class="flex items-center gap-2">
+          <div class="flex items-center gap-2 flex-wrap">
             <span id="trade-label" class="text-xs font-semibold uppercase tracking-wider text-slate-400">Aguardando Próxima Entrada</span>
             <span id="live-contract-id" class="text-[11px] text-slate-500 font-mono"></span>
           </div>
@@ -270,14 +264,31 @@
         </div>
       </div>
 
-      <!-- Métricas do Contrato Ativo -->
-      <div class="flex items-center gap-8">
+      <!-- Métricas do Contrato Ativo e Estratégia Operacional -->
+      <div class="flex items-center gap-6 sm:gap-8 flex-wrap">
+        <!-- Modo / Estratégia de Operação -->
         <div class="text-right">
-          <div class="text-[11px] text-slate-400">TICKS</div>
+          <div class="text-[11px] text-slate-400 uppercase tracking-wider font-semibold">MODO / ESTRATÉGIA</div>
+          <div id="mode-badge-container" class="mt-0.5 bg-slate-800/90 border border-slate-700/80 rounded-lg px-2.5 py-1 text-xs inline-flex items-center gap-1.5 font-bold shadow-sm">
+            <span id="mode-badge-text" class="text-cyan-300">Escudo Demo</span>
+          </div>
+        </div>
+
+        <!-- Stake da Operação Atual / Próxima -->
+        <div class="text-right min-w-[70px]">
+          <div class="text-[11px] text-slate-400 uppercase tracking-wider font-semibold">STAKE</div>
+          <div id="live-stake-display" class="text-lg font-extrabold text-amber-400 font-mono">$1.00</div>
+        </div>
+
+        <!-- Ticks -->
+        <div class="text-right min-w-[60px]">
+          <div class="text-[11px] text-slate-400 uppercase tracking-wider font-semibold">TICKS</div>
           <div id="live-ticks-display" class="text-lg font-extrabold text-cyan-400 font-mono">0 / 6</div>
         </div>
-        <div class="text-right min-w-[100px]">
-          <div class="text-[11px] text-slate-400">LUCRO FLUTUANTE</div>
+
+        <!-- Lucro Flutuante -->
+        <div class="text-right min-w-[90px]">
+          <div class="text-[11px] text-slate-400 uppercase tracking-wider font-semibold">LUCRO FLUTUANTE</div>
           <div id="live-profit-display" class="text-lg font-extrabold text-slate-400 font-mono">$0.00</div>
         </div>
       </div>
@@ -928,43 +939,47 @@
         needIconsUpdate = true;
       }
 
-      // 2. Saldo da Conta em Tempo Real & Modo de Operação
+      // 2. Stake Operacional & Modo / Estratégia
+      const curStake = data.current_stake || data.next_stake || data.stake_amount || 1.0;
+      const liveStakeEl = document.getElementById("live-stake-display");
+      if (liveStakeEl) {
+        liveStakeEl.innerText = `$${parseFloat(curStake).toFixed(2)}`;
+      }
+
       const modeBadgeText = document.getElementById("mode-badge-text");
       const modeBadgeCont = document.getElementById("mode-badge-container");
       if (modeBadgeText && modeBadgeCont) {
-        const curStake = data.current_stake || data.next_stake || data.stake_amount || 1.0;
-        
         // Prioridade 1: Martingale Parcelado Ativo (com perdas a pagar)
         if (data.primary_loss_action === "fractional_martingale" && (data.accumulated_cycle_loss || 0) > 0) {
           const rem = data.fractional_remaining_installments || data.fractional_installments || 2;
-          modeBadgeText.innerText = `📊 PARCELADO [${rem}x] (-$${data.accumulated_cycle_loss.toFixed(2)}) • Stake $${curStake.toFixed(2)}`;
-          modeBadgeCont.className = "bg-amber-950/90 border border-amber-500/80 rounded-lg px-2.5 py-1.5 text-xs flex items-center gap-1.5 animate-pulse text-amber-300 font-bold";
+          modeBadgeText.innerText = `📊 PARCELADO [${rem}x] (-$${data.accumulated_cycle_loss.toFixed(2)})`;
+          modeBadgeCont.className = "mt-0.5 bg-amber-950/90 border border-amber-500/80 rounded-lg px-2.5 py-1 text-xs inline-flex items-center gap-1.5 animate-pulse text-amber-300 font-bold shadow-sm";
         } else if (data.operation_mode === "shield_combined") {
           if (data.primary_gale_step > 0) {
-            modeBadgeText.innerText = `🔁 GALE REAL [${data.primary_gale_step}/${data.primary_recovery_max_steps || 1}] ($${curStake.toFixed(2)})`;
-            modeBadgeCont.className = "bg-amber-950/90 border border-amber-500/80 rounded-lg px-2.5 py-1.5 text-xs flex items-center gap-1.5 animate-pulse text-amber-300 font-bold";
+            modeBadgeText.innerText = `🔁 GALE REAL [${data.primary_gale_step}/${data.primary_recovery_max_steps || 1}]`;
+            modeBadgeCont.className = "mt-0.5 bg-amber-950/90 border border-amber-500/80 rounded-lg px-2.5 py-1 text-xs inline-flex items-center gap-1.5 animate-pulse text-amber-300 font-bold shadow-sm";
           } else if (data.sniper_armed) {
-            modeBadgeText.innerText = `🎯 SNIPER REAL ARMADO ($${curStake.toFixed(2)})`;
-            modeBadgeCont.className = "bg-rose-950/80 border border-rose-500/80 rounded-lg px-2.5 py-1.5 text-xs flex items-center gap-1.5 animate-pulse text-rose-300 font-bold";
+            modeBadgeText.innerText = `🎯 SNIPER REAL ARMADO`;
+            modeBadgeCont.className = "mt-0.5 bg-rose-950/80 border border-rose-500/80 rounded-lg px-2.5 py-1 text-xs inline-flex items-center gap-1.5 animate-pulse text-rose-300 font-bold shadow-sm";
           } else {
             modeBadgeText.innerText = `🛡️ Escudo Demo (${data.shield_losses_count || 0}/${data.shield_trigger_losses || 3} L)`;
-            modeBadgeCont.className = "bg-purple-950/70 border border-purple-500/50 rounded-lg px-2.5 py-1.5 text-xs flex items-center gap-1.5 text-purple-300 font-semibold";
+            modeBadgeCont.className = "mt-0.5 bg-purple-950/70 border border-purple-500/50 rounded-lg px-2.5 py-1 text-xs inline-flex items-center gap-1.5 text-purple-300 font-semibold shadow-sm";
           }
         } else if (data.operation_mode === "primary_only") {
           if (data.primary_gale_step > 0) {
-            modeBadgeText.innerText = `🔁 GALE REAL [${data.primary_gale_step}/${data.primary_recovery_max_steps || 1}] ($${curStake.toFixed(2)})`;
-            modeBadgeCont.className = "bg-amber-950/90 border border-amber-500/80 rounded-lg px-2.5 py-1.5 text-xs flex items-center gap-1.5 animate-pulse text-amber-300 font-bold";
+            modeBadgeText.innerText = `🔁 GALE REAL [${data.primary_gale_step}/${data.primary_recovery_max_steps || 1}]`;
+            modeBadgeCont.className = "mt-0.5 bg-amber-950/90 border border-amber-500/80 rounded-lg px-2.5 py-1 text-xs inline-flex items-center gap-1.5 animate-pulse text-amber-300 font-bold shadow-sm";
           } else {
             modeBadgeText.innerText = "🎯 Somente Real";
-            modeBadgeCont.className = "bg-emerald-950/70 border border-emerald-500/50 rounded-lg px-2.5 py-1.5 text-xs flex items-center gap-1.5 text-emerald-300 font-semibold";
+            modeBadgeCont.className = "mt-0.5 bg-emerald-950/70 border border-emerald-500/50 rounded-lg px-2.5 py-1 text-xs inline-flex items-center gap-1.5 text-emerald-300 font-semibold shadow-sm";
           }
         } else {
           if (data.primary_gale_step > 0) {
-            modeBadgeText.innerText = `🔁 GALE DEMO [${data.primary_gale_step}/${data.primary_recovery_max_steps || 1}] ($${curStake.toFixed(2)})`;
-            modeBadgeCont.className = "bg-amber-950/90 border border-amber-500/80 rounded-lg px-2.5 py-1.5 text-xs flex items-center gap-1.5 animate-pulse text-amber-300 font-bold";
+            modeBadgeText.innerText = `🔁 GALE DEMO [${data.primary_gale_step}/${data.primary_recovery_max_steps || 1}]`;
+            modeBadgeCont.className = "mt-0.5 bg-amber-950/90 border border-amber-500/80 rounded-lg px-2.5 py-1 text-xs inline-flex items-center gap-1.5 animate-pulse text-amber-300 font-bold shadow-sm";
           } else {
             modeBadgeText.innerText = "🧪 Somente Demo";
-            modeBadgeCont.className = "bg-amber-950/70 border border-amber-500/50 rounded-lg px-2.5 py-1.5 text-xs flex items-center gap-1.5 text-amber-300 font-semibold";
+            modeBadgeCont.className = "mt-0.5 bg-amber-950/70 border border-amber-500/50 rounded-lg px-2.5 py-1 text-xs inline-flex items-center gap-1.5 text-amber-300 font-semibold shadow-sm";
           }
         }
       }
