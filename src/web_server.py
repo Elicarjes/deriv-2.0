@@ -265,7 +265,7 @@ class DashboardState:
                 "max_entry_tick": self.config.max_entry_tick
             },
             "summary": {
-                "pnl": round(self.risk.daily_pnl, 2),
+                "pnl": round(self.risk.session_pnl, 2),
                 "wins": self.risk.wins,
                 "losses": self.risk.losses,
                 "total_trades": self.risk.total_trades,
@@ -282,7 +282,8 @@ class DashboardState:
     def start_new_session(self, reason: str = "Novo ciclo de testes iniciado"):
         """Arquiva a sessão corrente (se tiver trades) e reinicia o estado para uma nova sessão limpa."""
         self.archive_current_session()
-        self.risk = RiskManager(self.config)
+        current_daily_pnl = self.risk.daily_pnl
+        self.risk = RiskManager(self.config, daily_pnl_initial=current_daily_pnl)
         self.recent_trades.clear()
         self.session_trades.clear()
         self.shield_wins = 0
@@ -322,9 +323,16 @@ class DashboardState:
             "wait_cycle_reset": self.config.wait_cycle_reset,
             "max_entry_tick": self.config.max_entry_tick,
             "current_cycle_tick": self.current_cycle_tick,
+            "session_pnl": self.risk.session_pnl,
             "daily_pnl": self.risk.daily_pnl,
-            "tp_target": self.config.daily_take_profit_usd,
-            "sl_target": self.config.daily_stop_loss_usd,
+            "session_take_profit_usd": self.config.session_take_profit_usd,
+            "session_stop_loss_usd": self.config.session_stop_loss_usd,
+            "daily_take_profit_usd": self.config.daily_take_profit_usd,
+            "daily_stop_loss_usd": self.config.daily_stop_loss_usd,
+            "session_tp_target": self.config.session_take_profit_usd,
+            "session_sl_target": self.config.session_stop_loss_usd,
+            "tp_target": self.config.session_take_profit_usd,
+            "sl_target": self.config.session_stop_loss_usd,
             "win_rate": win_rate,
             "wins": self.risk.wins,
             "losses": self.risk.losses,
@@ -383,6 +391,22 @@ class DashboardState:
             except Exception:
                 disconnected.add(ws)
         self.connected_websockets -= disconnected
+
+    async def sync_accounts_balance(self):
+        """Busca o saldo atualizado de ambas as contas na Deriv via REST API de forma não-bloqueante."""
+        loop = asyncio.get_event_loop()
+        try:
+            bal_prim = await loop.run_in_executor(None, self.primary_account.fetch_balance)
+            bal_sec = await loop.run_in_executor(None, self.secondary_account.fetch_balance)
+            active_acc = self.get_active_account()
+            self.account_balance = active_acc.balance
+            self.account_id = active_acc.account_id
+            self.account_type = active_acc.account_type
+            logger.info(f"🔄 Saldos sincronizados com a Deriv: Primária ${bal_prim:.2f} ({self.primary_account.account_type}) | Secundária ${bal_sec:.2f} ({self.secondary_account.account_type})")
+            await self.notify_clients()
+        except Exception as e:
+            logger.warning(f"Erro ao sincronizar saldos com a Deriv: {e}")
+
 
 
 cfg = BotConfig()
@@ -840,6 +864,10 @@ class BotRunner:
                                         # Contabiliza na Conta Primária (Alvo Sniper / Real)
                                         self.st.risk.register_trade(p_final)
 
+                                    # Atualiza saldo em tempo real no app imediatamente
+                                    target_account.balance = round(target_account.balance + p_final, 2)
+                                    self.st.account_balance = target_account.balance
+
                                     self._record_trade(
                                         p_final,
                                         ticks=self.st.current_ticks,
@@ -871,6 +899,10 @@ class BotRunner:
                                                 self.st.shield_losses += 1
                                         else:
                                             self.st.risk.register_trade(net)
+
+                                        # Atualiza saldo em tempo real no app imediatamente
+                                        target_account.balance = round(target_account.balance + net, 2)
+                                        self.st.account_balance = target_account.balance
 
                                         self._record_trade(
                                             net,
@@ -1006,7 +1038,24 @@ async def stop_bot():
     state.current_ticks = 0
     state.current_profit = 0.0
     await state.notify_clients()
+
+    # Sincroniza saldos finais com a Deriv em background
+    asyncio.create_task(state.sync_accounts_balance())
+
     return {"status": "stopped", "message": "Robô pausado com sucesso!"}
+
+
+@app.post("/api/accounts/refresh-balance")
+async def refresh_accounts_balance():
+    """Força sincronização imediata dos saldos de todas as contas conectadas."""
+    await state.sync_accounts_balance()
+    return {
+        "status": "success",
+        "message": "Saldos sincronizados com a Deriv!",
+        "primary_balance": state.primary_account.balance,
+        "secondary_balance": state.secondary_account.balance,
+        "account_balance": state.account_balance
+    }
 
 
 def persist_env_config(updates: Dict[str, Any]):
@@ -1041,6 +1090,8 @@ class ConfigUpdateRequest(BaseModel):
     growth_rate: float
     stake_amount: float
     exit_ticks: int
+    session_stop_loss_usd: Optional[float] = 5.00
+    session_take_profit_usd: Optional[float] = 5.00
     daily_stop_loss_usd: float
     daily_take_profit_usd: float
     max_consecutive_losses: int
@@ -1073,6 +1124,8 @@ async def get_config():
         "growth_rate": state.config.growth_rate,
         "stake_amount": state.config.stake_amount,
         "exit_ticks": state.config.exit_ticks,
+        "session_stop_loss_usd": state.config.session_stop_loss_usd,
+        "session_take_profit_usd": state.config.session_take_profit_usd,
         "daily_stop_loss_usd": state.config.daily_stop_loss_usd,
         "daily_take_profit_usd": state.config.daily_take_profit_usd,
         "max_consecutive_losses": state.config.max_consecutive_losses,
@@ -1131,6 +1184,10 @@ async def update_config(cfg_in: ConfigUpdateRequest):
         state.config.growth_rate = round(float(cfg_in.growth_rate), 4)
         state.config.stake_amount = round(float(cfg_in.stake_amount), 2)
         state.config.exit_ticks = int(cfg_in.exit_ticks)
+        if cfg_in.session_stop_loss_usd is not None:
+            state.config.session_stop_loss_usd = round(abs(float(cfg_in.session_stop_loss_usd)), 2)
+        if cfg_in.session_take_profit_usd is not None:
+            state.config.session_take_profit_usd = round(abs(float(cfg_in.session_take_profit_usd)), 2)
         state.config.daily_stop_loss_usd = round(abs(float(cfg_in.daily_stop_loss_usd)), 2)
         state.config.daily_take_profit_usd = round(abs(float(cfg_in.daily_take_profit_usd)), 2)
         state.config.max_consecutive_losses = int(cfg_in.max_consecutive_losses)
@@ -1209,6 +1266,8 @@ async def update_config(cfg_in: ConfigUpdateRequest):
             "growth_rate": state.config.growth_rate,
             "stake_amount": state.config.stake_amount,
             "exit_ticks": state.config.exit_ticks,
+            "session_stop_loss_usd": state.config.session_stop_loss_usd,
+            "session_take_profit_usd": state.config.session_take_profit_usd,
             "daily_stop_loss_usd": state.config.daily_stop_loss_usd,
             "daily_take_profit_usd": state.config.daily_take_profit_usd,
             "max_consecutive_losses": state.config.max_consecutive_losses,
@@ -1235,6 +1294,8 @@ async def update_config(cfg_in: ConfigUpdateRequest):
             "GROWTH_RATE": f"{state.config.growth_rate:.2f}",
             "STAKE_AMOUNT": f"{state.config.stake_amount:.2f}",
             "EXIT_TICKS": str(state.config.exit_ticks),
+            "SESSION_STOP_LOSS_USD": f"{state.config.session_stop_loss_usd:.2f}",
+            "SESSION_TAKE_PROFIT_USD": f"{state.config.session_take_profit_usd:.2f}",
             "DAILY_STOP_LOSS_USD": f"{state.config.daily_stop_loss_usd:.2f}",
             "DAILY_TAKE_PROFIT_USD": f"{state.config.daily_take_profit_usd:.2f}",
             "MAX_CONSECUTIVE_LOSSES": str(state.config.max_consecutive_losses),

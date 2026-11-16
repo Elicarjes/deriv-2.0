@@ -15,9 +15,10 @@ logger = logging.getLogger("RiskManager")
 
 
 class RiskManager:
-    def __init__(self, config: BotConfig):
+    def __init__(self, config: BotConfig, daily_pnl_initial: float = 0.0):
         self.config = config
-        self.daily_pnl: float = 0.0
+        self.session_pnl: float = 0.0
+        self.daily_pnl: float = float(daily_pnl_initial)
         self.total_trades: int = 0
         self.wins: int = 0
         self.losses: int = 0
@@ -42,21 +43,35 @@ class RiskManager:
         if self.is_stopped:
             return False
 
-        # Trava 1: Stop Loss Diário
-        if self.daily_pnl <= -abs(self.config.daily_stop_loss_usd):
+        # Trava 1: Stop Loss da Sessão
+        if self.config.session_stop_loss_usd > 0 and self.session_pnl <= -abs(self.config.session_stop_loss_usd):
             self.is_stopped = True
-            self.stop_reason = f"STOP LOSS DIÁRIO ATINGIDO: Saldo atual ${self.daily_pnl:+.2f} (Limite: -${self.config.daily_stop_loss_usd:.2f})"
+            self.stop_reason = f"STOP LOSS DA SESSÃO ATINGIDO: Saldo da sessão ${self.session_pnl:+.2f} (Limite: -${self.config.session_stop_loss_usd:.2f})"
             logger.warning(f"🛑 {self.stop_reason}")
             return False
 
-        # Trava 2: Take Profit Diário (Meta Batida)
-        if self.daily_pnl >= abs(self.config.daily_take_profit_usd):
+        # Trava 2: Take Profit da Sessão (Meta da Sessão Batida)
+        if self.config.session_take_profit_usd > 0 and self.session_pnl >= abs(self.config.session_take_profit_usd):
             self.is_stopped = True
-            self.stop_reason = f"META DIÁRIA BATIDA COM SUCESSO: Saldo atual ${self.daily_pnl:+.2f} (Meta: +${self.config.daily_take_profit_usd:.2f})"
+            self.stop_reason = f"META DA SESSÃO BATIDA COM SUCESSO: Saldo da sessão ${self.session_pnl:+.2f} (Meta: +${self.config.session_take_profit_usd:.2f})"
             logger.info(f"🎯 {self.stop_reason}")
             return False
 
-        # Trava 3: Perdas Consecutivas Imediatas (Circuit Breaker)
+        # Trava 3: Stop Loss Diário Global
+        if self.config.daily_stop_loss_usd > 0 and self.daily_pnl <= -abs(self.config.daily_stop_loss_usd):
+            self.is_stopped = True
+            self.stop_reason = f"STOP LOSS DIÁRIO GLOBAL ATINGIDO: Saldo do dia ${self.daily_pnl:+.2f} (Limite: -${self.config.daily_stop_loss_usd:.2f})"
+            logger.warning(f"🛑 {self.stop_reason}")
+            return False
+
+        # Trava 4: Take Profit Diário Global (Meta Diária Batida)
+        if self.config.daily_take_profit_usd > 0 and self.daily_pnl >= abs(self.config.daily_take_profit_usd):
+            self.is_stopped = True
+            self.stop_reason = f"META DIÁRIA GLOBAL BATIDA COM SUCESSO: Saldo do dia ${self.daily_pnl:+.2f} (Meta: +${self.config.daily_take_profit_usd:.2f})"
+            logger.info(f"🏆 {self.stop_reason}")
+            return False
+
+        # Trava 5: Perdas Consecutivas Imediatas (Circuit Breaker)
         if self.current_loss_streak >= self.config.max_consecutive_losses:
             self.is_stopped = True
             self.stop_reason = f"CIRCUIT BREAKER: {self.current_loss_streak} perdas consecutivas. Parando para proteção."
@@ -67,6 +82,7 @@ class RiskManager:
 
     def register_trade(self, profit_usd: float):
         self.total_trades += 1
+        self.session_pnl += profit_usd
         self.daily_pnl += profit_usd
 
         if profit_usd > 0:

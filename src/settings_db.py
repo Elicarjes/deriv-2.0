@@ -34,6 +34,8 @@ class SettingsDB:
                     growth_rate REAL NOT NULL DEFAULT 0.05,
                     stake_amount REAL NOT NULL DEFAULT 1.00,
                     exit_ticks INTEGER NOT NULL DEFAULT 6,
+                    session_stop_loss_usd REAL NOT NULL DEFAULT 5.00,
+                    session_take_profit_usd REAL NOT NULL DEFAULT 5.00,
                     daily_stop_loss_usd REAL NOT NULL DEFAULT 20.00,
                     daily_take_profit_usd REAL NOT NULL DEFAULT 20.00,
                     max_consecutive_losses INTEGER NOT NULL DEFAULT 20,
@@ -79,6 +81,8 @@ class SettingsDB:
             "growth_rate": "REAL NOT NULL DEFAULT 0.05",
             "stake_amount": "REAL NOT NULL DEFAULT 1.00",
             "exit_ticks": "INTEGER NOT NULL DEFAULT 6",
+            "session_stop_loss_usd": "REAL NOT NULL DEFAULT 5.00",
+            "session_take_profit_usd": "REAL NOT NULL DEFAULT 5.00",
             "daily_stop_loss_usd": "REAL NOT NULL DEFAULT 20.00",
             "daily_take_profit_usd": "REAL NOT NULL DEFAULT 20.00",
             "max_consecutive_losses": "INTEGER NOT NULL DEFAULT 20",
@@ -124,6 +128,7 @@ class SettingsDB:
                 now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 fields = [
                     "id", "growth_rate", "stake_amount", "exit_ticks",
+                    "session_stop_loss_usd", "session_take_profit_usd",
                     "daily_stop_loss_usd", "daily_take_profit_usd", "max_consecutive_losses",
                     "wait_cycle_reset", "max_entry_tick", "operation_mode",
                     "shield_trigger_losses", "primary_loss_action", "primary_recovery_max_steps",
@@ -138,6 +143,8 @@ class SettingsDB:
                     float(initial_values.get("growth_rate", 0.05)),
                     float(initial_values.get("stake_amount", 1.00)),
                     int(initial_values.get("exit_ticks", 6)),
+                    float(initial_values.get("session_stop_loss_usd", 5.00)),
+                    float(initial_values.get("session_take_profit_usd", 5.00)),
                     float(initial_values.get("daily_stop_loss_usd", 20.00)),
                     float(initial_values.get("daily_take_profit_usd", 20.00)),
                     int(initial_values.get("max_consecutive_losses", 20)),
@@ -192,6 +199,7 @@ class SettingsDB:
 
         allowed_keys = [
             "growth_rate", "stake_amount", "exit_ticks",
+            "session_stop_loss_usd", "session_take_profit_usd",
             "daily_stop_loss_usd", "daily_take_profit_usd", "max_consecutive_losses",
             "wait_cycle_reset", "max_entry_tick", "operation_mode",
             "shield_trigger_losses", "primary_loss_action", "primary_recovery_max_steps",

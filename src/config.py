@@ -48,10 +48,14 @@ class BotConfig:
     exit_ticks: int = int(os.getenv("EXIT_TICKS", "2"))  # Sai com lucro no 2º tick!
     take_profit_usd: float = float(os.getenv("TAKE_PROFIT_USD", "0.05"))  # Proteção nativa
 
-    # Gestão de Risco Diária (Travas Rígidas)
-    daily_stop_loss_usd: float = float(os.getenv("DAILY_STOP_LOSS_USD", "2.00"))  # Limite máximo de perda no dia
-    daily_take_profit_usd: float = float(os.getenv("DAILY_TAKE_PROFIT_USD", "2.00"))  # Meta máxima de ganho no dia
-    max_consecutive_losses: int = int(os.getenv("MAX_CONSECUTIVE_LOSSES", "2"))  # Pausa após 2 derrotas
+    # Gestão de Risco por Sessão
+    session_stop_loss_usd: float = float(os.getenv("SESSION_STOP_LOSS_USD", "5.00"))  # Limite máximo de perda na sessão
+    session_take_profit_usd: float = float(os.getenv("SESSION_TAKE_PROFIT_USD", "5.00"))  # Meta máxima de ganho na sessão
+
+    # Gestão de Risco Diária (Travas Rígidas Globais)
+    daily_stop_loss_usd: float = float(os.getenv("DAILY_STOP_LOSS_USD", "20.00"))  # Limite máximo de perda no dia
+    daily_take_profit_usd: float = float(os.getenv("DAILY_TAKE_PROFIT_USD", "20.00"))  # Meta máxima de ganho no dia
+    max_consecutive_losses: int = int(os.getenv("MAX_CONSECUTIVE_LOSSES", "20"))  # Pausa após N derrotas
 
     # Sincronização Inteligente de Ciclo (Esperar bater na parede)
     wait_cycle_reset: bool = os.getenv("WAIT_CYCLE_RESET", "true").lower() in ("true", "1", "yes")
