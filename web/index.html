@@ -87,9 +87,12 @@
       </button>
 
       <!-- Item: Sessões -->
-      <button onclick="switchPage('sessions')" id="nav-item-sessions" class="nav-item w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-medium transition text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 border border-transparent">
-        <i data-lucide="history" class="w-4 h-4"></i>
-        <span>Sessões</span>
+      <button onclick="switchPage('sessions')" id="nav-item-sessions" class="nav-item w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-medium transition text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 border border-transparent">
+        <div class="flex items-center gap-3">
+          <i data-lucide="history" class="w-4 h-4"></i>
+          <span>Sessões</span>
+        </div>
+        <span id="sessions-count" class="font-mono text-[10px] bg-slate-800 text-purple-300 px-2 py-0.5 rounded-full font-bold">0</span>
       </button>
 
       <!-- Item: Documentação -->
@@ -178,12 +181,6 @@
           <span id="bot-status-dot" class="w-2 h-2 rounded-full bg-slate-500"></span>
           <span id="bot-status-text" class="truncate">Parado</span>
         </div>
-
-        <!-- Botão Histórico de Sessões -->
-        <button onclick="openSessionsModal()" title="Ver Histórico de Sessões Anteriores" class="px-3 py-1.5 rounded-lg font-semibold text-xs flex items-center justify-center gap-1.5 transition shadow bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-slate-600 text-slate-200">
-          <i data-lucide="archive" class="w-4 h-4 text-purple-400"></i>
-          <span>Sessões (<span id="sessions-count" class="font-mono text-purple-300">0</span>)</span>
-        </button>
 
         <!-- Botão Nova Sessão -->
         <button onclick="confirmStartNewSession()" title="Arquivar sessão atual e iniciar nova limpa" class="px-3 py-1.5 rounded-lg font-semibold text-xs flex items-center justify-center gap-1.5 transition shadow bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-slate-600 text-slate-200">
@@ -860,22 +857,31 @@
               <i data-lucide="history" class="w-4 h-4"></i>
             </div>
             <span>Histórico de Sessões</span>
+            <span id="sessions-modal-badge" class="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-950 border border-purple-500/40 text-purple-300">0 Sessões</span>
           </h2>
           <p class="text-xs text-slate-400 mt-1">
             Registro detalhado dos ciclos de operação, metas atingidas, controle de drawdown e auditoria de trades.
           </p>
         </div>
         
-        <div class="flex items-center gap-2">
-          <button onclick="confirmStartNewSession()" class="px-3.5 py-1.5 rounded-lg font-semibold text-xs flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 transition shadow">
-            <i data-lucide="rotate-ccw" class="w-3.5 h-3.5 text-amber-400"></i>
+        <div class="flex items-center gap-2.5 flex-wrap">
+          <button onclick="confirmClearSessions()" title="Limpar Todo o Histórico" class="px-3.5 py-1.5 rounded-lg text-xs font-semibold text-rose-400 hover:bg-rose-950/50 hover:border-rose-500/40 border border-transparent transition flex items-center gap-1.5">
+            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+            <span>Limpar Histórico</span>
+          </button>
+          <button onclick="loadAndRenderSessions()" title="Recarregar Sessões" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 transition shadow flex items-center gap-1.5">
+            <i data-lucide="refresh-cw" class="w-3.5 h-3.5 text-purple-400"></i>
+            <span>Atualizar</span>
+          </button>
+          <button onclick="confirmStartNewSession()" class="px-3.5 py-1.5 rounded-lg font-semibold text-xs flex items-center gap-1.5 bg-purple-600 hover:bg-purple-500 text-white transition shadow shadow-purple-600/20">
+            <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
             <span>Nova Sessão</span>
           </button>
         </div>
       </div>
 
       <!-- Grid de Resumo das Sessões -->
-      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <!-- Total de Sessões -->
         <div class="bg-slate-900/80 border border-slate-800/80 rounded-2xl p-5 shadow-lg flex flex-col justify-between">
           <div>
@@ -899,32 +905,11 @@
           </div>
           <p class="text-[11px] text-slate-500 mt-2">Recebendo novos ticks e ordens</p>
         </div>
-
-        <!-- Acesso ao Modal de Auditoria -->
-        <div class="bg-slate-900/80 border border-slate-800/80 rounded-2xl p-5 shadow-lg flex flex-col justify-between">
-          <div>
-            <div class="flex items-center justify-between text-slate-400 text-xs mb-2">
-              <span class="font-bold uppercase tracking-wider text-[11px]">MODAL DE CONSULTA</span>
-              <i data-lucide="file-spreadsheet" class="w-4 h-4 text-emerald-400"></i>
-            </div>
-            <p class="text-xs text-slate-400 mt-1">Abra o visualizador completo de sessões gravadas:</p>
-          </div>
-          <button onclick="openSessionsModal()" class="w-full mt-3 py-2 px-3 rounded-xl bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/30 text-purple-300 text-xs font-semibold transition flex items-center justify-center gap-2">
-            <i data-lucide="archive" class="w-3.5 h-3.5"></i>
-            <span>Ver Detalhes das Sessões</span>
-          </button>
-        </div>
       </div>
 
-      <!-- Placeholder Elegante / Pronto para Próximo Passo -->
-      <div class="bg-slate-900/50 border border-dashed border-slate-800 rounded-2xl p-8 sm:p-12 text-center">
-        <div class="w-14 h-14 mx-auto mb-4 rounded-2xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400 shadow-lg shadow-purple-500/5">
-          <i data-lucide="history" class="w-7 h-7"></i>
-        </div>
-        <h3 class="text-lg font-bold text-slate-200">Página de Sessões Pronta</h3>
-        <p class="text-xs text-slate-400 max-w-md mx-auto mt-2 leading-relaxed">
-          O menu lateral e a rota desta página já estão conectados. No próximo passo, me diga como deseja organizar a tabela de sessões, filtros por período, exportação de dados e métricas!
-        </p>
+      <!-- Lista de Sessões (Cards Detalhados com Trades e Parâmetros) -->
+      <div id="sessions-container" class="space-y-4">
+        <!-- Renderizado dinamicamente via JS -->
       </div>
 
     </div>
@@ -1325,50 +1310,6 @@
   </div>
 </div>
 
-  <!-- Modal de Histórico de Sessões -->
-  <div id="modal-sessions" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm hidden p-4">
-    <div class="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-4xl shadow-2xl p-6 relative max-h-[90vh] flex flex-col">
-      
-      <!-- Cabeçalho do Modal -->
-      <div class="flex items-center justify-between pb-4 border-b border-slate-800 shrink-0">
-        <div class="flex items-center gap-3">
-          <div class="w-9 h-9 rounded-xl bg-purple-950/80 border border-purple-500/40 flex items-center justify-center text-purple-400">
-            <i data-lucide="archive" class="w-5 h-5"></i>
-          </div>
-          <div>
-            <h3 class="text-base font-bold text-slate-100 flex items-center gap-2">
-              Histórico de Sessões de Trading
-              <span id="sessions-modal-badge" class="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-950 border border-purple-500/40 text-purple-300">0 Sessões</span>
-            </h3>
-            <p class="text-xs text-slate-400">Consulte o desempenho, configurações e lista de trades de cada teste realizado</p>
-          </div>
-        </div>
-        <div class="flex items-center gap-2">
-          <button onclick="confirmClearSessions()" title="Limpar Todo o Histórico" class="px-3 py-1.5 rounded-lg text-xs font-semibold text-rose-400 hover:bg-rose-950/50 hover:border-rose-500/40 border border-transparent transition flex items-center gap-1.5">
-            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
-            <span>Limpar Histórico</span>
-          </button>
-          <button onclick="closeSessionsModal()" class="text-slate-400 hover:text-slate-200 transition p-1.5 rounded-lg hover:bg-slate-800">
-            <i data-lucide="x" class="w-5 h-5"></i>
-          </button>
-        </div>
-      </div>
-
-      <!-- Lista de Sessões (Scrollable) -->
-      <div id="sessions-container" class="flex-1 overflow-y-auto py-4 space-y-4 pr-1">
-        <!-- Renderizado dinamicamente via JS -->
-      </div>
-
-      <!-- Rodapé do Modal -->
-      <div class="pt-3 border-t border-slate-800 flex items-center justify-between shrink-0 text-xs text-slate-400">
-        <span>💡 Cada sessão preserva seus parâmetros, assertividade, sequências de streaks e lista de contratos.</span>
-        <button onclick="closeSessionsModal()" class="px-4 py-2 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 transition">
-          Fechar
-        </button>
-      </div>
-
-    </div>
-  </div>
 
   <script>
     let isBotRunning = false;
@@ -2211,14 +2152,11 @@
     // FUNÇÕES DE HISTÓRICO DE SESSÕES
     // ==========================================
     async function openSessionsModal() {
-      const modal = document.getElementById("modal-sessions");
-      modal.classList.remove("hidden");
-      await loadAndRenderSessions();
+      switchPage("sessions");
     }
 
     function closeSessionsModal() {
-      const modal = document.getElementById("modal-sessions");
-      modal.classList.add("hidden");
+      // Modal substituído por página nativa no menu sidebar
     }
 
     async function loadAndRenderSessions() {
@@ -2527,6 +2465,7 @@
       // Sincroniza dados da página Sessões se estiver aberta
       if (pageId === "sessions") {
         syncSessionsPageInfo();
+        loadAndRenderSessions();
       }
 
       // Fecha sidebar no mobile
