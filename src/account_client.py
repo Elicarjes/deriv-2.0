@@ -16,14 +16,14 @@ class AccountClient:
     def __init__(
         self,
         account_role: str,  # "primary" ou "secondary"
-        name: str,          # Ex: "Conta Primária (Real)"
-        token: str,
-        app_id: str,
+        name: str = "",
+        token: str = "",
+        app_id: str = "",
         account_id: str = "",
         rest_base_url: str = "https://api.derivws.com"
     ):
         self.account_role = account_role
-        self.name = name
+        self._name = name
         self.token = token.strip() if token else ""
         self.app_id = str(app_id).strip() if app_id else ""
         self.account_id = str(account_id).strip() if account_id else ""
@@ -31,6 +31,15 @@ class AccountClient:
         self.balance: float = 0.0
         self.is_connected: bool = False
         self.last_error: str = ""
+
+    @property
+    def name(self) -> str:
+        role_title = "Conta Primária" if self.account_role == "primary" else ("Conta Secundária (Escudo)" if self.account_role == "secondary" else "Conta")
+        return f"{role_title} ({self.account_type})"
+
+    @name.setter
+    def name(self, val: str):
+        self._name = val
 
     @property
     def account_type(self) -> str:

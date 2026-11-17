@@ -1189,27 +1189,27 @@ def persist_env_config(updates: Dict[str, Any]):
 
 
 class ConfigUpdateRequest(BaseModel):
-    growth_rate: float
-    stake_amount: float
-    exit_ticks: int
-    session_stop_loss_usd: Optional[float] = 5.00
-    session_take_profit_usd: Optional[float] = 5.00
-    daily_stop_loss_usd: float
-    daily_take_profit_usd: float
-    max_consecutive_losses: int
-    wait_cycle_reset: bool = True
-    max_entry_tick: int = 1
-    start_new_session: bool = False
+    growth_rate: Optional[float] = None
+    stake_amount: Optional[float] = None
+    exit_ticks: Optional[int] = None
+    session_stop_loss_usd: Optional[float] = None
+    session_take_profit_usd: Optional[float] = None
+    daily_stop_loss_usd: Optional[float] = None
+    daily_take_profit_usd: Optional[float] = None
+    max_consecutive_losses: Optional[int] = None
+    wait_cycle_reset: Optional[bool] = None
+    max_entry_tick: Optional[int] = None
+    start_new_session: Optional[bool] = False
 
     # Parâmetros da Conta Escudo e Multi-Contas
-    operation_mode: Optional[str] = "secondary_only"
-    shield_trigger_losses: Optional[int] = 2
-    primary_loss_action: Optional[str] = "return_to_shield"
-    primary_recovery_max_steps: Optional[int] = 1
-    primary_martingale_multiplier: Optional[float] = 2.0
-    fractional_installments: Optional[int] = 2
-    include_base_profit: Optional[bool] = True
-    max_loss_recovery_cap: Optional[float] = 20.00
+    operation_mode: Optional[str] = None
+    shield_trigger_losses: Optional[int] = None
+    primary_loss_action: Optional[str] = None
+    primary_recovery_max_steps: Optional[int] = None
+    primary_martingale_multiplier: Optional[float] = None
+    fractional_installments: Optional[int] = None
+    include_base_profit: Optional[bool] = None
+    max_loss_recovery_cap: Optional[float] = None
     primary_token: Optional[str] = None
     primary_app_id: Optional[str] = None
     primary_account_id: Optional[str] = None
@@ -1280,23 +1280,31 @@ async def list_accounts(req: AccountsListRequest, user: Dict[str, Any] = Depends
 async def update_config(cfg_in: ConfigUpdateRequest, user: Dict[str, Any] = Depends(get_current_user)):
     state = bot_manager.get_state(user["id"])
     try:
-        if cfg_in.stake_amount < 1.0:
-            return JSONResponse(status_code=400, content={"status": "error", "message": "A Stake mínima exigida pela Deriv para Accumulators é $1.00 USD."})
-        if cfg_in.exit_ticks < 2:
-            return JSONResponse(status_code=400, content={"status": "error", "message": "A saída deve ser no mínimo de 2 ticks (o 1º tick é o Entry Spot, que não gera lucro)."})
+        if cfg_in.stake_amount is not None:
+            if cfg_in.stake_amount < 1.0:
+                return JSONResponse(status_code=400, content={"status": "error", "message": "A Stake mínima exigida pela Deriv para Accumulators é $1.00 USD."})
+            state.config.stake_amount = round(float(cfg_in.stake_amount), 2)
+        if cfg_in.exit_ticks is not None:
+            if cfg_in.exit_ticks < 2:
+                return JSONResponse(status_code=400, content={"status": "error", "message": "A saída deve ser no mínimo de 2 ticks (o 1º tick é o Entry Spot, que não gera lucro)."})
+            state.config.exit_ticks = int(cfg_in.exit_ticks)
 
-        state.config.growth_rate = round(float(cfg_in.growth_rate), 4)
-        state.config.stake_amount = round(float(cfg_in.stake_amount), 2)
-        state.config.exit_ticks = int(cfg_in.exit_ticks)
+        if cfg_in.growth_rate is not None:
+            state.config.growth_rate = round(float(cfg_in.growth_rate), 4)
         if cfg_in.session_stop_loss_usd is not None:
             state.config.session_stop_loss_usd = round(abs(float(cfg_in.session_stop_loss_usd)), 2)
         if cfg_in.session_take_profit_usd is not None:
             state.config.session_take_profit_usd = round(abs(float(cfg_in.session_take_profit_usd)), 2)
-        state.config.daily_stop_loss_usd = round(abs(float(cfg_in.daily_stop_loss_usd)), 2)
-        state.config.daily_take_profit_usd = round(abs(float(cfg_in.daily_take_profit_usd)), 2)
-        state.config.max_consecutive_losses = int(cfg_in.max_consecutive_losses)
-        state.config.wait_cycle_reset = bool(cfg_in.wait_cycle_reset)
-        state.config.max_entry_tick = int(cfg_in.max_entry_tick)
+        if cfg_in.daily_stop_loss_usd is not None:
+            state.config.daily_stop_loss_usd = round(abs(float(cfg_in.daily_stop_loss_usd)), 2)
+        if cfg_in.daily_take_profit_usd is not None:
+            state.config.daily_take_profit_usd = round(abs(float(cfg_in.daily_take_profit_usd)), 2)
+        if cfg_in.max_consecutive_losses is not None:
+            state.config.max_consecutive_losses = int(cfg_in.max_consecutive_losses)
+        if cfg_in.wait_cycle_reset is not None:
+            state.config.wait_cycle_reset = bool(cfg_in.wait_cycle_reset)
+        if cfg_in.max_entry_tick is not None:
+            state.config.max_entry_tick = int(cfg_in.max_entry_tick)
 
         # Atualizações de Modo de Operação e Contas
         if cfg_in.operation_mode:
@@ -1351,6 +1359,11 @@ async def update_config(cfg_in: ConfigUpdateRequest, user: Dict[str, Any] = Depe
             await asyncio.to_thread(state.primary_account.fetch_balance)
         if state.secondary_account.is_configured():
             await asyncio.to_thread(state.secondary_account.fetch_balance)
+
+        active_acc = state.get_active_account()
+        state.account_balance = active_acc.balance
+        state.account_id = active_acc.account_id
+        state.account_type = active_acc.account_type
 
         # Se o usuário solicitou iniciar como uma nova sessão de teste
         if cfg_in.start_new_session:

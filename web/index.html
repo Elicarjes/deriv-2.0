@@ -525,9 +525,9 @@
                   <div>
                     <h3 class="text-sm font-bold text-slate-100 flex items-center gap-2">
                       Conta Primária
-                      <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-950/80 border border-emerald-500/40 text-emerald-300">REAL</span>
+                      <span id="accounts-card-prim-badge" class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-950/80 border border-emerald-500/40 text-emerald-300">REAL</span>
                     </h3>
-                    <p class="text-[11px] text-slate-400">Execução oficial de operações e recuperação fracionada</p>
+                    <p id="accounts-card-prim-desc" class="text-[11px] text-slate-400">Execução oficial de operações e recuperação fracionada</p>
                   </div>
                 </div>
 
@@ -639,11 +639,11 @@
             <!-- Rodapé do Card Primária -->
             <div class="pt-3 border-t border-slate-800/60 flex items-center justify-between text-[11px] text-slate-400">
               <span class="flex items-center gap-1">
-                <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+                <span id="accounts-page-primary-dot" class="w-2 h-2 rounded-full bg-emerald-400"></span>
                 <span>ID Operacional:</span>
                 <strong id="accounts-page-primary-id" class="font-mono text-slate-200">ROT92107168</strong>
               </span>
-              <span class="text-slate-500 font-mono">Conta Real Ativa</span>
+              <span id="accounts-page-primary-type-label" class="text-slate-500 font-mono">Conta Real Ativa</span>
             </div>
 
           </div>
@@ -1834,6 +1834,7 @@
         input.classList.add("hidden");
         input.value = select.value;
       }
+      syncAccountsPageInfo();
     }
 
     function renderAccountOptions(type, accounts, selectedVal) {
@@ -2637,7 +2638,11 @@
     }
 
     function syncAccountsPageInfo() {
-      const primId = document.getElementById("primary-acc-id")?.innerText;
+      const primSelect = document.getElementById("cfg-prim-acc-select");
+      const primInput = document.getElementById("cfg-prim-acc-id");
+      const selectedPrim = (primSelect && primSelect.value !== "custom") ? primSelect.value : (primInput?.value || "");
+
+      const primId = selectedPrim || document.getElementById("primary-acc-id")?.innerText;
       const secId = document.getElementById("secondary-acc-id")?.innerText;
       const activeId = document.getElementById("account-id")?.innerText;
       const primBal = document.getElementById("primary-balance")?.innerText || "$0.00";
@@ -2654,6 +2659,30 @@
           pEl.innerText = primId;
         } else if (activeId) {
           pEl.innerText = activeId;
+        }
+      }
+
+      // Atualiza dinamicamente se a Conta Primária é Real ou Demo
+      const currentPrimId = (pEl?.innerText || "").toUpperCase();
+      const isPrimDemo = currentPrimId.includes("DOT") || currentPrimId.includes("VRTC") || currentPrimId.includes("DEMO");
+      const primBadge = document.getElementById("accounts-card-prim-badge");
+      const primDesc = document.getElementById("accounts-card-prim-desc");
+      const primDot = document.getElementById("accounts-page-primary-dot");
+      const primLabel = document.getElementById("accounts-page-primary-type-label");
+
+      if (primBadge) {
+        if (isPrimDemo) {
+          primBadge.innerText = "DEMO (TESTES)";
+          primBadge.className = "px-2 py-0.5 rounded text-[10px] font-bold bg-amber-950/80 border border-amber-500/40 text-amber-300";
+          if (primDesc) primDesc.innerText = "Conta virtual de testes selecionada como operacional principal";
+          if (primDot) primDot.className = "w-2 h-2 rounded-full bg-amber-400";
+          if (primLabel) primLabel.innerText = "Conta Virtual Demo Operacional";
+        } else {
+          primBadge.innerText = "REAL";
+          primBadge.className = "px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-950/80 border border-emerald-500/40 text-emerald-300";
+          if (primDesc) primDesc.innerText = "Execução oficial de operações e recuperação fracionada";
+          if (primDot) primDot.className = "w-2 h-2 rounded-full bg-emerald-400";
+          if (primLabel) primLabel.innerText = "Conta Real Ativa";
         }
       }
 
