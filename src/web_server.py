@@ -14,7 +14,8 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional, Set
 import urllib.request
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Depends, HTTPException, status
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Depends, HTTPException, status, Response
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel
 import uvicorn
@@ -32,6 +33,14 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 logger = logging.getLogger("WebServer")
 
 app = FastAPI(title="Deriv Quant Dashboard")
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    logger.error(f"⚠️ Erro de validação 422 na rota {request.url.path}: {exc.errors()} | Body recebido: {exc.body}")
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={"status": "error", "message": f"Erro de validação dos campos: {exc.errors()}", "detail": exc.errors()},
+    )
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 WEB_DIR = BASE_DIR / "web"
@@ -735,6 +744,9 @@ class BotRunner:
 
                 try:
                     otp_url = target_account.get_otp_url()
+                    self.st.account_id = target_account.account_id
+                    self.st.account_type = target_account.account_type
+                    await self.st.notify_clients()
 
                     async with websockets.connect(otp_url, ping_interval=None) as ws:
                         hb_task = asyncio.create_task(self.heartbeat(ws))
@@ -1092,6 +1104,11 @@ async def serve_index(request: Request):
         return HTMLResponse("<script>window.location.href='/login';</script>")
     index_path = WEB_DIR / "index.html"
     return HTMLResponse(content=index_path.read_text(encoding="utf-8"))
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    return Response(status_code=204)
 
 
 @app.get("/api/status")

@@ -758,8 +758,7 @@
                     onchange="handleAccSelectChange('sec')" 
                     class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs font-mono font-semibold text-amber-300 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/40 cursor-pointer transition"
                   >
-                    <option value="DOT93505571">DOT93505571 (DEMO)</option>
-                    <option value="ROT92107168">ROT92107168 (REAL)</option>
+                    <option value="DOT94832400">DOT94832400 (VIRTUAL / DEMO)</option>
                     <option value="custom">✏️ Outra conta (digitar manualmente)...</option>
                   </select>
                   <input 
@@ -778,7 +777,7 @@
               <span class="flex items-center gap-1">
                 <span class="w-2 h-2 rounded-full bg-amber-400"></span>
                 <span>ID Escudo:</span>
-                <strong id="accounts-page-secondary-id" class="font-mono text-slate-200">DOT93505571</strong>
+                <strong id="accounts-page-secondary-id" class="font-mono text-slate-200">DOT94832400</strong>
               </span>
               <span class="text-slate-500 font-mono">Conta Virtual Demo</span>
             </div>
@@ -1368,7 +1367,14 @@
     let lastLossStreaksSignature = "";
     let lastWinStreaksSignature = "";
 
+    let wsReconnectTimeout = null;
+    let wsConnectingLogged = false;
+
     function initWebSocket() {
+      if (wsReconnectTimeout) {
+        clearTimeout(wsReconnectTimeout);
+        wsReconnectTimeout = null;
+      }
       const token = getStoredToken();
       if (!token) {
         window.location.href = "/login";
@@ -1376,21 +1382,38 @@
       }
       const loc = window.location;
       const wsUri = (loc.protocol === "https:" ? "wss://" : "ws://") + loc.host + "/ws?token=" + encodeURIComponent(token);
-      ws = new WebSocket(wsUri);
+      
+      try {
+        ws = new WebSocket(wsUri);
 
-      ws.onopen = () => {
-        logTerminal("Canal WebSocket conectado com o robô.", "emerald");
-      };
+        ws.onopen = () => {
+          wsConnectingLogged = false;
+          logTerminal("Canal WebSocket conectado com o robô.", "emerald");
+        };
 
-      ws.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        updateDashboard(data);
-      };
+        ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            updateDashboard(data);
+          } catch (e) {
+            console.warn("Mensagem WS inválida:", e);
+          }
+        };
 
-      ws.onclose = () => {
-        logTerminal("Reconectando canal WebSocket...", "amber");
-        setTimeout(initWebSocket, 2000);
-      };
+        ws.onerror = () => {
+          // Trata silenciosamente durante reinicializações do servidor
+        };
+
+        ws.onclose = () => {
+          if (!wsConnectingLogged) {
+            logTerminal("Reconectando canal WebSocket...", "amber");
+            wsConnectingLogged = true;
+          }
+          wsReconnectTimeout = setTimeout(initWebSocket, 2500);
+        };
+      } catch (e) {
+        wsReconnectTimeout = setTimeout(initWebSocket, 3000);
+      }
     }
 
     function updateDashboard(data) {
@@ -2071,30 +2094,30 @@
       const secondaryAccId = (secSelect && secSelect.value !== "custom") ? secSelect.value : (secInput ? secInput.value.trim() : "");
 
       const payload = {
-        growth_rate: parseFloat(document.getElementById("cfg-growth-rate").value),
-        stake_amount: parseFloat(document.getElementById("cfg-stake-amount").value),
-        exit_ticks: parseInt(document.getElementById("cfg-exit-ticks").value),
-        session_stop_loss_usd: parseFloat(document.getElementById("cfg-session-stop-loss").value) || 5.0,
-        session_take_profit_usd: parseFloat(document.getElementById("cfg-session-take-profit").value) || 5.0,
-        daily_stop_loss_usd: parseFloat(document.getElementById("cfg-stop-loss").value),
-        daily_take_profit_usd: parseFloat(document.getElementById("cfg-take-profit").value),
-        max_consecutive_losses: parseInt(document.getElementById("cfg-max-losses").value),
-        wait_cycle_reset: document.getElementById("cfg-wait-cycle").value === "true",
-        max_entry_tick: parseInt(document.getElementById("cfg-max-entry-tick").value) || 1,
-        operation_mode: document.getElementById("cfg-operation-mode").value,
-        shield_trigger_losses: parseInt(document.getElementById("cfg-shield-trigger").value) || 3,
-        primary_loss_action: document.getElementById("cfg-primary-loss-action").value,
-        primary_recovery_max_steps: parseInt(document.getElementById("cfg-primary-max-steps").value) || 1,
-        primary_martingale_multiplier: parseFloat(document.getElementById("cfg-primary-multiplier").value) || 2.0,
-        fractional_installments: parseInt(document.getElementById("cfg-fractional-installments").value) || 2,
-        max_loss_recovery_cap: parseFloat(document.getElementById("cfg-max-recovery-cap").value) || 20.0,
-        include_base_profit: document.getElementById("cfg-include-base-profit").value === "true",
-        primary_token: document.getElementById("cfg-prim-token").value.trim(),
+        growth_rate: parseFloat(document.getElementById("cfg-growth-rate")?.value) || 0.05,
+        stake_amount: parseFloat(document.getElementById("cfg-stake-amount")?.value) || 1.0,
+        exit_ticks: parseInt(document.getElementById("cfg-exit-ticks")?.value) || 6,
+        session_stop_loss_usd: parseFloat(document.getElementById("cfg-session-stop-loss")?.value) || 5.0,
+        session_take_profit_usd: parseFloat(document.getElementById("cfg-session-take-profit")?.value) || 5.0,
+        daily_stop_loss_usd: parseFloat(document.getElementById("cfg-stop-loss")?.value) || 20.0,
+        daily_take_profit_usd: parseFloat(document.getElementById("cfg-take-profit")?.value) || 20.0,
+        max_consecutive_losses: parseInt(document.getElementById("cfg-max-losses")?.value) || 20,
+        wait_cycle_reset: document.getElementById("cfg-wait-cycle")?.value === "true",
+        max_entry_tick: parseInt(document.getElementById("cfg-max-entry-tick")?.value) || 1,
+        operation_mode: document.getElementById("cfg-operation-mode")?.value || "shield_combined",
+        shield_trigger_losses: parseInt(document.getElementById("cfg-shield-trigger")?.value) || 3,
+        primary_loss_action: document.getElementById("cfg-primary-loss-action")?.value || "return_to_shield",
+        primary_recovery_max_steps: parseInt(document.getElementById("cfg-primary-max-steps")?.value) || 1,
+        primary_martingale_multiplier: parseFloat(document.getElementById("cfg-primary-multiplier")?.value) || 2.0,
+        fractional_installments: parseInt(document.getElementById("cfg-fractional-installments")?.value) || 2,
+        max_loss_recovery_cap: parseFloat(document.getElementById("cfg-max-recovery-cap")?.value) || 20.0,
+        include_base_profit: document.getElementById("cfg-include-base-profit")?.value === "true",
+        primary_token: document.getElementById("cfg-prim-token")?.value?.trim() || "",
         primary_account_id: primaryAccId,
-        primary_app_id: document.getElementById("cfg-prim-app-id").value.trim(),
-        secondary_token: document.getElementById("cfg-sec-token").value.trim(),
+        primary_app_id: document.getElementById("cfg-prim-app-id")?.value?.trim() || "",
+        secondary_token: document.getElementById("cfg-sec-token")?.value?.trim() || "",
         secondary_account_id: secondaryAccId,
-        secondary_app_id: document.getElementById("cfg-sec-app-id").value.trim(),
+        secondary_app_id: document.getElementById("cfg-sec-app-id")?.value?.trim() || "",
         start_new_session: document.getElementById("cfg-start-new-session")?.checked || false
       };
 
@@ -2136,7 +2159,8 @@
             lucide.createIcons();
           }, 800);
         } else {
-          showFeedback(data.message || "Erro ao salvar configurações.", true);
+          const errMsg = data.message || (data.detail ? JSON.stringify(data.detail) : "") || "Erro ao salvar configurações.";
+          showFeedback(errMsg, true);
           btn.disabled = false;
           btn.innerHTML = origHtml;
           lucide.createIcons();
@@ -2569,7 +2593,8 @@
           await refreshBalances();
           syncAccountsPageInfo();
         } else {
-          showAccountsFeedback(data.message || "Erro ao salvar credenciais das contas.", true);
+          const errMsg = data.message || (data.detail ? JSON.stringify(data.detail) : "") || "Erro ao salvar credenciais das contas.";
+          showAccountsFeedback(errMsg, true);
         }
       } catch (err) {
         showAccountsFeedback("Erro na comunicação com o servidor: " + err, true);
@@ -2618,10 +2643,9 @@
             const secAccs = (currentConfig.secondary_available_accounts && currentConfig.secondary_available_accounts.length > 0)
               ? currentConfig.secondary_available_accounts
               : [
-                  { account_id: "DOT93505571", account_type: "demo" },
-                  { account_id: "ROT92107168", account_type: "real" }
+                  { account_id: "DOT94832400", account_type: "demo" }
                 ];
-            renderAccountOptions("sec", secAccs, currentConfig.secondary_account_id || "DOT93505571");
+            renderAccountOptions("sec", secAccs, currentConfig.secondary_account_id || "DOT94832400");
 
             syncAccountsPageInfo();
             if (isManual) {
@@ -2690,7 +2714,7 @@
         if (secId && secId !== "...") {
           sEl.innerText = secId;
         } else {
-          sEl.innerText = "DOT93505571";
+          sEl.innerText = "DOT94832400";
         }
       }
 

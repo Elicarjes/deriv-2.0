@@ -7,6 +7,7 @@ de forma desacoplada, independente e orientada a eventos.
 import json
 import logging
 import urllib.request
+import urllib.error
 from typing import Optional, Dict, Any
 
 logger = logging.getLogger("AccountClient")
@@ -86,14 +87,23 @@ class AccountClient:
             req = urllib.request.Request(url, headers=headers)
             with urllib.request.urlopen(req, timeout=8.0) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
-                for acc in data.get("data", []):
+                accounts_list = data.get("data", [])
+                for acc in accounts_list:
                     if acc.get("account_id") == self.account_id:
                         self.balance = float(acc.get("balance", 0.0))
                         logger.info(f"💵 Saldo carregado [{self.name}]: ${self.balance:.2f} USD ({self.account_type})")
                         return self.balance
-                # Se não encontrou pelo account_id exato, pega a primeira conta correspondente
-                if data.get("data"):
-                    self.balance = float(data["data"][0].get("balance", 0.0))
+                # Se não encontrou pelo account_id exato, auto-corrige para a primeira correspondente
+                if accounts_list:
+                    matched_acc = None
+                    if self.account_role == "secondary":
+                        matched_acc = next((a for a in accounts_list if a.get("account_type") == "demo"), accounts_list[0])
+                    else:
+                        matched_acc = accounts_list[0]
+                    old_id = self.account_id
+                    self.account_id = matched_acc.get("account_id", self.account_id)
+                    self.balance = float(matched_acc.get("balance", 0.0))
+                    logger.info(f"🔄 Auto-alinhamento de conta [{self.name}]: ID corrigido de '{old_id}' para '{self.account_id}' (Saldo: ${self.balance:.2f})")
                     return self.balance
         except Exception as e:
             self.last_error = str(e)
@@ -101,14 +111,43 @@ class AccountClient:
         return self.balance
 
     def get_otp_url(self) -> str:
-        """Solicita OTP para conexão WebSocket autenticada dedicada."""
-        if not self.is_configured():
-            raise ValueError(f"{self.name} não está devidamente configurada com Token e Account ID.")
+        """Solicita OTP para conexão WebSocket autenticada dedicada, com auto-recuperação."""
+        if not self.token:
+            raise ValueError(f"{self.name} não possui Token PAT configurado.")
+
         headers = {
             "Authorization": f"Bearer {self.token}",
             "Deriv-App-ID": str(self.app_id),
             "User-Agent": "Mozilla/5.0"
         }
+
+        # Tentativa inicial com a conta atual
+        if self.account_id:
+            try:
+                otp_url = f"{self.rest_base_url}/trading/v1/options/accounts/{self.account_id}/otp"
+                req = urllib.request.Request(otp_url, headers=headers, method="POST")
+                with urllib.request.urlopen(req, timeout=10.0) as resp:
+                    data = json.loads(resp.read().decode("utf-8"))
+                    return data["data"]["url"]
+            except urllib.error.HTTPError as he:
+                if he.code != 404:
+                    raise
+                logger.warning(f"⚠️ Conta '{self.account_id}' retornou 404 para o token [{self.name}]. Buscando contas válidas...")
+
+        # Se não tem account_id ou deu 404: busca contas ativas na Deriv para este token
+        available = self.fetch_available_accounts()
+        if not available:
+            raise ValueError(f"Nenhuma conta ativa encontrada na Deriv para o token de {self.name}.")
+
+        best_acc = None
+        if self.account_role == "secondary":
+            best_acc = next((a for a in available if a.get("account_type") == "demo"), available[0])
+        else:
+            best_acc = available[0]
+
+        self.account_id = best_acc["account_id"]
+        logger.info(f"✅ Conta auto-corrigida para '{self.account_id}' [{self.name}]. Gerando OTP...")
+
         otp_url = f"{self.rest_base_url}/trading/v1/options/accounts/{self.account_id}/otp"
         req = urllib.request.Request(otp_url, headers=headers, method="POST")
         with urllib.request.urlopen(req, timeout=10.0) as resp:
