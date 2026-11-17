@@ -25,10 +25,10 @@ class BotConfig:
     shield_trigger_losses: int = int(os.getenv("SHIELD_TRIGGER_LOSSES", "2"))  # X derrotas na demo para armar a Real
 
     # Ação pós-loss (Modos Escudo e Isolado):
-    # - "return_to_shield"      : Tiro Único Conservador (Volta imediatamente ao Escudo Demo ou mantém stake)
+    # - "fixed_stake" / "return_to_shield" : Stake Fixa Sempre (Sem Martingale / Sem Multiplicação)
     # - "recovery_martingale"   : Multiplicador Clássico (ex: 2.0x por X tentativas)
     # - "fractional_martingale" : Martingale Parcelado (Dilui o prejuízo acumulado em X parcelas baseadas no payout)
-    primary_loss_action: str = os.getenv("PRIMARY_LOSS_ACTION", "return_to_shield")
+    primary_loss_action: str = os.getenv("PRIMARY_LOSS_ACTION", "fixed_stake")
     primary_recovery_max_steps: int = int(os.getenv("PRIMARY_RECOVERY_MAX_STEPS", "1"))
     primary_martingale_multiplier: float = float(os.getenv("PRIMARY_MARTINGALE_MULTIPLIER", "2.0"))
 

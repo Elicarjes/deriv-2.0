@@ -174,7 +174,7 @@ class DashboardState:
         self.shield_losses = 0
         self.shield_pnl = 0.0
 
-        # Recuperação / Martingale Clássico e Parcelado
+        # Recuperação / Martingale Clássico e Parcelado ou Stake Fixa
         self.primary_loss_action = config.primary_loss_action
         self.primary_recovery_max_steps = config.primary_recovery_max_steps
         self.primary_martingale_multiplier = config.primary_martingale_multiplier
@@ -186,6 +186,11 @@ class DashboardState:
         self.max_loss_recovery_cap = getattr(config, "max_loss_recovery_cap", 20.00)
         self.accumulated_cycle_loss = 0.0
         self.fractional_remaining_installments = 0
+
+        if self.primary_loss_action in ("fixed_stake", "return_to_shield", "fixed"):
+            self.primary_gale_step = 0
+            self.accumulated_cycle_loss = 0.0
+            self.fractional_remaining_installments = 0
 
         active_acc = self.primary_account if self.active_trade_account == "primary" else self.secondary_account
         self.is_running = False
@@ -229,14 +234,19 @@ class DashboardState:
     def get_current_stake(self, account: Optional[AccountClient] = None) -> float:
         """
         Calcula o valor da stake da próxima ordem:
+        - fixed_stake / return_to_shield: Stake fixa rigorosa sem qualquer tipo de martingale.
         - fractional_martingale: Martingale parcelado baseado no payout oficial do Accumulator.
         - recovery_martingale: Multiplicador geométrico clássico.
         """
         acc = account or self.get_active_account()
 
+        # Se o comportamento for Stake Fixa (sem martingale), nunca altera o valor:
+        if self.primary_loss_action in ("fixed_stake", "return_to_shield", "fixed"):
+            return round(float(self.config.stake_amount), 2)
+
         # No modo escudo combinado, o Martingale só atua na conta primária (Sniper Real)
         if self.operation_mode == "shield_combined" and acc.account_role != "primary":
-            return self.config.stake_amount
+            return round(float(self.config.stake_amount), 2)
 
         # 1. Martingale Parcelado (Fracionado com base na matemática do Accumulator)
         if self.primary_loss_action == "fractional_martingale" and self.accumulated_cycle_loss > 0:
@@ -271,7 +281,7 @@ class DashboardState:
                 calc_stake = min(self.max_loss_recovery_cap, calc_stake)
             return max(1.0, calc_stake)
 
-        return self.config.stake_amount
+        return round(float(self.config.stake_amount), 2)
 
     def archive_current_session(self) -> Optional[Dict[str, Any]]:
         """Arquiva a sessão corrente caso tenha executado ao menos 1 trade."""
@@ -604,13 +614,15 @@ class BotRunner:
                             logger.info(self.st.latest_log)
                             return False
 
-                    # 2. Martingale Clássico ou Tiro Único
+                    # 2. Martingale Clássico ou Tiro Único (Stake Fixa)
                     if self.st.primary_gale_step > 0:
                         self.st.latest_log = f"🎉 VITÓRIA NA RECUPERAÇÃO REAL (+${profit:.2f})! Martingale concluído com sucesso. Retornando ao Escudo Demo."
                     else:
-                        self.st.latest_log = f"💰 SNIPER CONCLUÍDO COM VITÓRIA (+${profit:.2f})! Retornando ao Escudo Demo."
+                        self.st.latest_log = f"💰 SNIPER CONCLUÍDO COM VITÓRIA (+${profit:.2f})! Retornando ao Escudo Demo (Stake Fixa mantida: ${self.st.config.stake_amount:.2f})."
                     logger.info(self.st.latest_log)
                     self.st.primary_gale_step = 0
+                    self.st.accumulated_cycle_loss = 0.0
+                    self.st.fractional_remaining_installments = 0
                     self.st.sniper_armed = False
                     self.st.shield_losses_count = 0
                     return True
@@ -635,10 +647,12 @@ class BotRunner:
                         logger.warning(self.st.latest_log)
                         return False
                     else:
-                        if self.st.primary_gale_step > 0:
+                        if self.st.primary_loss_action in ("fixed_stake", "return_to_shield", "fixed"):
+                            self.st.latest_log = f"⚠️ Loss na Conta Real (-${abs(profit):.2f})! Modo Stake Fixa ativo: Retornando ao Escudo Demo sem usar Martingale (Stake Base: ${self.st.config.stake_amount:.2f})."
+                        elif self.st.primary_gale_step > 0:
                             self.st.latest_log = f"🛑 Limite de {self.st.primary_recovery_max_steps} nível(is) de Martingale atingido na Primária. Retornando ao Escudo Demo."
                         else:
-                            self.st.latest_log = f"⚠️ Trade na Primária finalizado com Loss (${profit:.2f}). Retornando ao Escudo Demo para nova sondagem."
+                            self.st.latest_log = f"⚠️ Trade na Primária finalizado com Loss (-${abs(profit):.2f}). Retornando ao Escudo Demo para nova sondagem."
                         logger.warning(self.st.latest_log)
                         self.st.primary_gale_step = 0
                         self.st.accumulated_cycle_loss = 0.0
@@ -671,7 +685,15 @@ class BotRunner:
                 if self.st.primary_gale_step > 0:
                     self.st.latest_log = f"🎉 VITÓRIA NA RECUPERAÇÃO (+${profit:.2f})! Martingale finalizado. Resetando para stake base (${self.st.config.stake_amount:.2f})."
                     logger.info(self.st.latest_log)
+                    self.st.primary_gale_step = 0
+                    return False
+
+                # 3. Stake Fixa (Sem Martingale)
+                self.st.latest_log = f"🎉 VITÓRIA (+${profit:.2f})! Stake fixa mantida em ${self.st.config.stake_amount:.2f}."
+                logger.info(self.st.latest_log)
                 self.st.primary_gale_step = 0
+                self.st.accumulated_cycle_loss = 0.0
+                self.st.fractional_remaining_installments = 0
                 return False
             else:
                 # Ocorreu derrota
@@ -694,9 +716,13 @@ class BotRunner:
                     logger.warning(self.st.latest_log)
                     return False
                 else:
-                    if self.st.primary_gale_step > 0:
+                    if self.st.primary_loss_action in ("fixed_stake", "return_to_shield", "fixed"):
+                        self.st.latest_log = f"⚠️ LOSS REGISTRADO (-${abs(profit):.2f})! Stake Fixa ativa: Próxima ordem mantida em ${self.st.config.stake_amount:.2f} (sem martingale)."
+                    elif self.st.primary_gale_step > 0:
                         self.st.latest_log = f"🛑 Limite de {self.st.primary_recovery_max_steps} nível(is) de Martingale atingido. Resetando para stake base (${self.st.config.stake_amount:.2f})."
-                        logger.warning(self.st.latest_log)
+                    else:
+                        self.st.latest_log = f"⚠️ Loss de -${abs(profit):.2f}. Mantendo stake base de ${self.st.config.stake_amount:.2f}."
+                    logger.warning(self.st.latest_log)
                     self.st.primary_gale_step = 0
                     self.st.accumulated_cycle_loss = 0.0
                     self.st.fractional_remaining_installments = 0
@@ -1123,6 +1149,13 @@ async def start_bot(user: Dict[str, Any] = Depends(get_current_user)):
     runner = bot_manager.get_runner(user["id"])
     if state.is_running:
         return {"status": "already_running", "message": "O robô já está em execução."}
+
+    # Se estiver configurado com Stake Fixa, zera rigorosamente qualquer estado anterior de martingale
+    if state.primary_loss_action in ("fixed_stake", "return_to_shield", "fixed"):
+        state.primary_gale_step = 0
+        state.accumulated_cycle_loss = 0.0
+        state.fractional_remaining_installments = 0
+
     state.is_running = True
     state.status_message = "Ativo"
     state.bot_task = asyncio.create_task(runner.run_loop())
@@ -1334,6 +1367,10 @@ async def update_config(cfg_in: ConfigUpdateRequest, user: Dict[str, Any] = Depe
         if cfg_in.primary_loss_action:
             state.primary_loss_action = cfg_in.primary_loss_action
             state.config.primary_loss_action = cfg_in.primary_loss_action
+            if cfg_in.primary_loss_action in ("fixed_stake", "return_to_shield", "fixed"):
+                state.primary_gale_step = 0
+                state.accumulated_cycle_loss = 0.0
+                state.fractional_remaining_installments = 0
         if cfg_in.primary_recovery_max_steps is not None:
             state.primary_recovery_max_steps = max(1, int(cfg_in.primary_recovery_max_steps))
             state.config.primary_recovery_max_steps = state.primary_recovery_max_steps
