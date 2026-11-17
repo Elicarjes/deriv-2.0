@@ -141,10 +141,10 @@
           <span id="account-type-badge" class="px-1.5 py-0.2 rounded text-[10px] font-bold bg-amber-950/80 border border-amber-500/40 text-amber-300">DEMO</span>
         </div>
 
-        <!-- Saldo da Conta Primária (Real) -->
+        <!-- Saldo da Conta Primária (Real / Demo) -->
         <div id="primary-balance-box" class="bg-slate-800/80 border border-slate-700/80 rounded-lg px-3 py-1 text-xs hidden flex-col justify-center">
           <div class="flex items-center gap-1 text-[10px] text-slate-400">
-            <span>Real:</span>
+            <span id="primary-balance-type-label">Real:</span>
             <span id="primary-acc-id" class="font-mono text-emerald-300">...</span>
           </div>
           <span id="primary-balance" class="font-mono font-bold text-emerald-400 text-xs">$0.00</span>
@@ -1502,9 +1502,24 @@
           primBox.classList.remove("hidden");
           primBox.classList.add("flex");
           const primAccEl = document.getElementById("primary-acc-id");
+          const primTypeLabel = document.getElementById("primary-balance-type-label");
+          const primBalEl = document.getElementById("primary-balance");
           if (primAccEl) primAccEl.innerText = data.primary_account_id;
-          if (data.primary_account_balance !== undefined) {
-            document.getElementById("primary-balance").innerText = `$${parseFloat(data.primary_account_balance).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+          
+          const isPrimDemo = data.primary_account?.account_type === "Demo" || 
+            (data.primary_account_id && (data.primary_account_id.includes("DOT") || data.primary_account_id.includes("VRTC") || data.primary_account_id.includes("DEMO")));
+          
+          if (primTypeLabel) {
+            primTypeLabel.innerText = isPrimDemo ? "Demo:" : "Real:";
+          }
+          if (primAccEl) {
+            primAccEl.className = isPrimDemo ? "font-mono text-amber-300" : "font-mono text-emerald-300";
+          }
+          if (primBalEl) {
+            primBalEl.className = isPrimDemo ? "font-mono font-bold text-amber-400 text-xs" : "font-mono font-bold text-emerald-400 text-xs";
+            if (data.primary_account_balance !== undefined) {
+              primBalEl.innerText = `$${parseFloat(data.primary_account_balance).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+            }
           }
         }
         if (secBox) {
