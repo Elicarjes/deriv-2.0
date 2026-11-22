@@ -341,6 +341,7 @@ def generate():
         <div class="control-group">
           <label>Estratégia Operacional</label>
           <select id="ctrlStrategy" onchange="onStrategyChange()">
+            <option value="REV_STREAK">🔁 Reversão por Streaks de Cores (Exaustão 6 a 15 Velas) [50s]</option>
             <option value="MILHAO_MINORIA_M5" selected>🎯 Milhão Minoria (Blocos 5 min / M5) [50s]</option>
             <option value="MILHAO_MAIORIA_M5">🔥 Milhão Maioria (Blocos 5 min / M5) [50s]</option>
             <option value="MILHAO_MINORIA_MOVEL">⚡ Milhão Minoria Móvel (5 velas contínuas) [50s]</option>
@@ -348,6 +349,32 @@ def generate():
             <option value="TREND_50S">🟢 Seguidor de Cor M1 (Verde=Rise / Vermelho=Fall) [50s]</option>
             <option value="REVERSAL_50S">🔄 Reversão de Cor M1 (Verde=Fall / Vermelho=Rise) [50s]</option>
             <option value="RISE_15S">📈 Fixo Rise 15s (Estratégia anterior)</option>
+          </select>
+        </div>
+
+        <!-- Controles Específicos para Reversão por Streaks de Cores -->
+        <div class="control-group" id="groupCandleStreakCount" style="display: none;">
+          <label>Velas Consecutivas para Reversão</label>
+          <select id="ctrlCandleStreakCount" onchange="onStrategyChange()">
+            <option value="6">6 velas consecutivas</option>
+            <option value="7">7 velas consecutivas</option>
+            <option value="8">8 velas consecutivas</option>
+            <option value="9" selected>9 velas consecutivas</option>
+            <option value="10">10 velas consecutivas</option>
+            <option value="11">11 velas consecutivas</option>
+            <option value="12">12 velas consecutivas</option>
+            <option value="13">13 velas consecutivas</option>
+            <option value="14">14 velas consecutivas</option>
+            <option value="15">15 velas consecutivas</option>
+          </select>
+        </div>
+
+        <div class="control-group" id="groupCandleStreakDir" style="display: none;">
+          <label>Filtro de Cor (Gatilho)</label>
+          <select id="ctrlCandleStreakDir" onchange="onStrategyChange()">
+            <option value="BOTH" selected>Ambas (Vermelhos=RISE / Verdes=FALL)</option>
+            <option value="RED">Apenas após Vermelhos (Entra RISE)</option>
+            <option value="GREEN">Apenas após Verdes (Entra FALL)</option>
           </select>
         </div>
 
@@ -546,6 +573,20 @@ def generate():
 
     function getActiveDataset() {{
       const st = document.getElementById('ctrlStrategy').value;
+      if (st === 'REV_STREAK') {{
+        const n = document.getElementById('ctrlCandleStreakCount').value;
+        const dir = document.getElementById('ctrlCandleStreakDir').value;
+        const key = `REV_STREAK_${{n}}_${{dir}}`;
+        return RAW_DATA.strategies[key] || {{
+          total_trades: 0,
+          direct_wins: 0,
+          direct_losses: 0,
+          direct_rate: 0,
+          loss_streaks: [],
+          win_streaks: [],
+          trades: []
+        }};
+      }}
       return RAW_DATA.strategies[st] || RAW_DATA.strategies['TREND_50S'];
     }}
 
@@ -559,20 +600,34 @@ def generate():
     function onStrategyChange() {{
       const st = document.getElementById('ctrlStrategy').value;
       const stBadge = document.getElementById('headerStrategyBadge');
-      if (st === 'MILHAO_MINORIA_M5') {{
-        stBadge.innerText = 'Estratégia: Milhão Minoria (Blocos M5 / 50s)';
-      }} else if (st === 'MILHAO_MAIORIA_M5') {{
-        stBadge.innerText = 'Estratégia: Milhão Maioria (Blocos M5 / 50s)';
-      }} else if (st === 'MILHAO_MINORIA_MOVEL') {{
-        stBadge.innerText = 'Estratégia: Milhão Minoria Móvel (5 Velas / 50s)';
-      }} else if (st === 'MILHAO_MAIORIA_MOVEL') {{
-        stBadge.innerText = 'Estratégia: Milhão Maioria Móvel (5 Velas / 50s)';
-      }} else if (st === 'TREND_50S') {{
-        stBadge.innerText = 'Estratégia: Seguidor de Vela (50s)';
-      }} else if (st === 'REVERSAL_50S') {{
-        stBadge.innerText = 'Estratégia: Reversão de Vela (50s)';
+      const grpStreakCount = document.getElementById('groupCandleStreakCount');
+      const grpStreakDir = document.getElementById('groupCandleStreakDir');
+
+      if (st === 'REV_STREAK') {{
+        grpStreakCount.style.display = 'block';
+        grpStreakDir.style.display = 'block';
+        const n = document.getElementById('ctrlCandleStreakCount').value;
+        const dir = document.getElementById('ctrlCandleStreakDir').value;
+        const dirLabel = dir === 'BOTH' ? 'Ambas as Cores' : (dir === 'RED' ? 'Após Vermelhos (RISE)' : 'Após Verdes (FALL)');
+        stBadge.innerText = `Estratégia: Reversão após ${{n}} Velas (${{dirLabel}}) [50s]`;
       }} else {{
-        stBadge.innerText = 'Estratégia: Rise Fixo 15s';
+        grpStreakCount.style.display = 'none';
+        grpStreakDir.style.display = 'none';
+        if (st === 'MILHAO_MINORIA_M5') {{
+          stBadge.innerText = 'Estratégia: Milhão Minoria (Blocos M5 / 50s)';
+        }} else if (st === 'MILHAO_MAIORIA_M5') {{
+          stBadge.innerText = 'Estratégia: Milhão Maioria (Blocos M5 / 50s)';
+        }} else if (st === 'MILHAO_MINORIA_MOVEL') {{
+          stBadge.innerText = 'Estratégia: Milhão Minoria Móvel (5 Velas / 50s)';
+        }} else if (st === 'MILHAO_MAIORIA_MOVEL') {{
+          stBadge.innerText = 'Estratégia: Milhão Maioria Móvel (5 Velas / 50s)';
+        }} else if (st === 'TREND_50S') {{
+          stBadge.innerText = 'Estratégia: Seguidor de Vela (50s)';
+        }} else if (st === 'REVERSAL_50S') {{
+          stBadge.innerText = 'Estratégia: Reversão de Vela (50s)';
+        }} else {{
+          stBadge.innerText = 'Estratégia: Rise Fixo 15s';
+        }}
       }}
 
       renderStreakBadges();

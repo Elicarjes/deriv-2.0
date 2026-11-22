@@ -188,7 +188,63 @@ strategies["MILHAO_MINORIA_MOVEL"] = build_milhao_strategy(mode="MINORIA", block
 print("Processando Milhão Maioria Móvel (5 velas contínuas)...")
 strategies["MILHAO_MAIORIA_MOVEL"] = build_milhao_strategy(mode="MAIORIA", block_size=5, duration=50, is_rolling=True)
 
-# 3. Estratégia Anterior (Rise Fixo 15s GMT)
+# 3. Estratégia de Reversão por Streaks de Cor (Exaustão de Vela 6 a 15)
+def build_reversal_streak_strategy(N=6, trigger_color="BOTH", duration=50):
+    trades_list = []
+    wins = []
+    consec_red = 0
+    consec_green = 0
+    
+    for i in range(len(all_candles)):
+        c = all_candles[i]
+        signal = None
+        desc = ""
+        
+        if consec_red >= N and trigger_color in ("BOTH", "RED"):
+            signal = "RISE"
+            desc = f"{consec_red}x 🔴 Vermelhos (Reversão RISE)"
+        elif consec_green >= N and trigger_color in ("BOTH", "GREEN"):
+            signal = "FALL"
+            desc = f"{consec_green}x 🟢 Verdes (Reversão FALL)"
+            
+        if signal:
+            entry_price = c['open']
+            idx_exit = np.searchsorted(epochs, c['time'] + duration)
+            if idx_exit < len(epochs):
+                exit_price = prices[idx_exit]
+                win = 1 if (signal == "RISE" and exit_price > entry_price) or (signal == "FALL" and exit_price < entry_price) else 0
+                wins.append(win)
+                trades_list.append({
+                    'time': c['dt'],
+                    'prev_dir': desc,
+                    'contract': signal,
+                    'entry': round(float(entry_price), 2),
+                    'exit': round(float(exit_price), 2),
+                    'delta': round(float(exit_price - entry_price), 2),
+                    'result': "WIN" if win == 1 else "LOSS",
+                    'win': win
+                })
+                
+        # Atualizar contadores
+        if c['color'] == 'VERMELHO':
+            consec_red += 1
+            consec_green = 0
+        elif c['color'] == 'VERDE':
+            consec_green += 1
+            consec_red = 0
+        else:
+            consec_red = 0
+            consec_green = 0
+            
+    return format_strategy_result(wins, trades_list)
+
+print("Processando Estratégias de Reversão por Streaks de Cores (6 a 15 velas)...")
+for n in range(6, 16):
+    strategies[f"REV_STREAK_{n}_BOTH"] = build_reversal_streak_strategy(N=n, trigger_color="BOTH")
+    strategies[f"REV_STREAK_{n}_RED"] = build_reversal_streak_strategy(N=n, trigger_color="RED")
+    strategies[f"REV_STREAK_{n}_GREEN"] = build_reversal_streak_strategy(N=n, trigger_color="GREEN")
+
+# 4. Estratégia Anterior (Rise Fixo 15s GMT)
 trades_15_list = []
 wins_15s = []
 for c in all_candles:
