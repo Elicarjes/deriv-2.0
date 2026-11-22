@@ -341,8 +341,12 @@ def generate():
         <div class="control-group">
           <label>Estratégia Operacional</label>
           <select id="ctrlStrategy" onchange="onStrategyChange()">
-            <option value="TREND_50S" selected>🟢 Seguidor de Cor (Verde=Rise / Vermelho=Fall) [50s]</option>
-            <option value="REVERSAL_50S">🔄 Reversão de Cor (Verde=Fall / Vermelho=Rise) [50s]</option>
+            <option value="MILHAO_MINORIA_M5" selected>🎯 Milhão Minoria (Blocos 5 min / M5) [50s]</option>
+            <option value="MILHAO_MAIORIA_M5">🔥 Milhão Maioria (Blocos 5 min / M5) [50s]</option>
+            <option value="MILHAO_MINORIA_MOVEL">⚡ Milhão Minoria Móvel (5 velas contínuas) [50s]</option>
+            <option value="MILHAO_MAIORIA_MOVEL">⚡ Milhão Maioria Móvel (5 velas contínuas) [50s]</option>
+            <option value="TREND_50S">🟢 Seguidor de Cor M1 (Verde=Rise / Vermelho=Fall) [50s]</option>
+            <option value="REVERSAL_50S">🔄 Reversão de Cor M1 (Verde=Fall / Vermelho=Rise) [50s]</option>
             <option value="RISE_15S">📈 Fixo Rise 15s (Estratégia anterior)</option>
           </select>
         </div>
@@ -457,7 +461,7 @@ def generate():
     <!-- Log de Trades com Filtro de Conta (Demo vs Real) -->
     <div class="section-card">
       <div class="section-header">
-        <div class="section-title">📋 Log Individual das Ordens (1.426 Candles)</div>
+        <div class="section-title" id="logSectionTitle">📋 Log Individual das Ordens</div>
         <div style="display: flex; gap: 10px; flex-wrap: wrap;">
           <select id="filterAccount" style="background: #0d1117; border: 1px solid var(--border); color: #fff; padding: 4px 10px; border-radius: 4px; font-size: 12px;" onchange="filterTrades()">
             <option value="ALL">Todas as Contas</option>
@@ -480,7 +484,7 @@ def generate():
               <th>#</th>
               <th>Conta Executora</th>
               <th>Horário (GMT Deriv)</th>
-              <th>Vela Anterior</th>
+              <th>Contexto / Análise Prévia</th>
               <th>Contrato</th>
               <th>Entrada (:00)</th>
               <th>Saída (:50)</th>
@@ -530,7 +534,15 @@ def generate():
     function onStrategyChange() {{
       const st = document.getElementById('ctrlStrategy').value;
       const stBadge = document.getElementById('headerStrategyBadge');
-      if (st === 'TREND_50S') {{
+      if (st === 'MILHAO_MINORIA_M5') {{
+        stBadge.innerText = 'Estratégia: Milhão Minoria (Blocos M5 / 50s)';
+      }} else if (st === 'MILHAO_MAIORIA_M5') {{
+        stBadge.innerText = 'Estratégia: Milhão Maioria (Blocos M5 / 50s)';
+      }} else if (st === 'MILHAO_MINORIA_MOVEL') {{
+        stBadge.innerText = 'Estratégia: Milhão Minoria Móvel (5 Velas / 50s)';
+      }} else if (st === 'MILHAO_MAIORIA_MOVEL') {{
+        stBadge.innerText = 'Estratégia: Milhão Maioria Móvel (5 Velas / 50s)';
+      }} else if (st === 'TREND_50S') {{
         stBadge.innerText = 'Estratégia: Seguidor de Vela (50s)';
       }} else if (st === 'REVERSAL_50S') {{
         stBadge.innerText = 'Estratégia: Reversão de Vela (50s)';
@@ -740,6 +752,9 @@ def generate():
       else if (mode === 'WIN_STREAK') modeLabel = `Escudo: ${{targetCount}}W`;
       const galeLabel = maxGales === 0 ? 'Mão Fixa' : `Até G${{maxGales}}`;
       document.getElementById('kpiPnLSub').innerText = `${{modeLabel}} | ${{galeLabel}} | Payout: ${{(payoutFactor * 100).toFixed(0)}}%`;
+
+      const titleEl = document.getElementById('logSectionTitle');
+      if (titleEl) titleEl.innerText = `📋 Log Individual das Ordens (${{dataset.trades.length}} Sinais / Entradas)`;
 
       document.getElementById('statSlaveOrders').innerText = slaveOrdersCount.toLocaleString();
       document.getElementById('statMasterOrders').innerText = masterOrdersCount.toLocaleString();
