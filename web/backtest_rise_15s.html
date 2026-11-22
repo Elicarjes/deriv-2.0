@@ -268,28 +268,28 @@
     <div class="kpi-grid">
       <div class="kpi-card">
         <div class="kpi-title">Ordens na Conta Real (Master)</div>
-        <div class="kpi-value val-gold" id="kpiRealTrades">218</div>
-        <div class="kpi-sub" id="kpiFilteredSub">Economizou 1.208 ordens no escudo</div>
+        <div class="kpi-value val-gold" id="kpiRealTrades">-</div>
+        <div class="kpi-sub" id="kpiFilteredSub">Calculando...</div>
       </div>
       <div class="kpi-card">
         <div class="kpi-title">Assertividade na Conta Real</div>
-        <div class="kpi-value val-blue" id="kpiWinRate">48.2%</div>
-        <div class="kpi-sub" id="kpiCyclesSub">105 Wins / 113 Losses</div>
+        <div class="kpi-value val-blue" id="kpiWinRate">-</div>
+        <div class="kpi-sub" id="kpiCyclesSub">-</div>
       </div>
       <div class="kpi-card">
         <div class="kpi-title">Maior Sequência de Perdas</div>
-        <div class="kpi-value val-red" id="kpiMaxLossStreak">11L</div>
+        <div class="kpi-value val-red" id="kpiMaxLossStreak">-</div>
         <div class="kpi-sub">Geral do ativo no dia</div>
       </div>
       <div class="kpi-card">
         <div class="kpi-title">Maior Sequência de Vitórias</div>
-        <div class="kpi-value val-green" id="kpiMaxWinStreak">11W</div>
+        <div class="kpi-value val-green" id="kpiMaxWinStreak">-</div>
         <div class="kpi-sub">Geral do ativo no dia</div>
       </div>
       <div class="kpi-card">
         <div class="kpi-title">Resultado Líquido (Conta Real)</div>
-        <div class="kpi-value val-red" id="kpiPnL">$-20.60</div>
-        <div class="kpi-sub" id="kpiPnLSub">Mão Fixa | Payout 0.88</div>
+        <div class="kpi-value val-red" id="kpiPnL">-</div>
+        <div class="kpi-sub" id="kpiPnLSub">-</div>
       </div>
     </div>
 
@@ -414,23 +414,27 @@
       <div class="shield-banner" id="shieldBanner">
         <div>
           <div class="shield-stat-title">Ordens no Escudo (Demo)</div>
-          <div class="shield-stat-val val-blue" id="statSlaveOrders">1.208</div>
+          <div class="shield-stat-val val-blue" id="statSlaveOrders">-</div>
         </div>
         <div>
           <div class="shield-stat-title">Ordens na Conta Real</div>
-          <div class="shield-stat-val val-gold" id="statMasterOrders">218</div>
+          <div class="shield-stat-val val-gold" id="statMasterOrders">-</div>
         </div>
         <div>
           <div class="shield-stat-title">Exposição Filtrada</div>
-          <div class="shield-stat-val val-green" id="statExposureSaved">84.7%</div>
+          <div class="shield-stat-val val-green" id="statExposureSaved">-</div>
         </div>
         <div>
-          <div class="shield-stat-title">Stops Evitados pela Demo</div>
-          <div class="shield-stat-val val-green" id="statStopsAvoided">0 stops</div>
+          <div class="shield-stat-title">Stops na Real (Loss Total)</div>
+          <div class="shield-stat-val val-red" id="statStopsAvoided">-</div>
         </div>
       </div>
 
       <!-- Resumo dos Ciclos de Gale da Master -->
+      <div style="margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+        <span id="martingaleTableTitle" style="font-weight: 600; font-size: 14px; color: var(--text-bright);">📊 Eficiência dos Ciclos de Gale na Conta Real</span>
+        <span id="martingaleTableSummary" style="font-size: 12px; color: #8b949e;"></span>
+      </div>
       <div style="overflow-x: auto; margin-bottom: 20px;">
         <table>
           <thead>
@@ -470,6 +474,20 @@
             <option value="ALL">Todos os Resultados</option>
             <option value="WIN">Apenas Wins</option>
             <option value="LOSS">Apenas Losses</option>
+          </select>
+          <select id="filterGale" style="background: #0d1117; border: 1px solid var(--border); color: #fff; padding: 4px 10px; border-radius: 4px; font-size: 12px;" onchange="filterTrades()">
+            <option value="ALL">Todos os Níveis de Gale</option>
+            <option value="0">Apenas G0 (1ª Mão)</option>
+            <option value="1">Apenas G1</option>
+            <option value="2">Apenas G2</option>
+            <option value="3">Apenas G3</option>
+            <option value="4">Apenas G4</option>
+            <option value="5">Apenas G5</option>
+            <option value="6">Apenas G6</option>
+            <option value="7">Apenas G7</option>
+            <option value="8">Apenas G8</option>
+            <option value="9">Apenas G9</option>
+            <option value="10">Apenas G10</option>
           </select>
         </div>
       </div>
@@ -753,6 +771,11 @@
       const titleEl = document.getElementById('logSectionTitle');
       if (titleEl) titleEl.innerText = `📋 Log Individual das Ordens (${ds.trades.length} Sinais / Entradas)`;
 
+      const tableTitleEl = document.getElementById('martingaleTableTitle');
+      if (tableTitleEl) tableTitleEl.innerText = maxGales === 0 ? '📊 Simulação Mão Fixa na Conta Real' : `📊 Ciclos de Gale na Conta Real (G0 até G${maxGales})`;
+      const tableSumEl = document.getElementById('martingaleTableSummary');
+      if (tableSumEl) tableSumEl.innerText = `Total de Ciclos: ${totalCycles} | Stops de Ciclo: ${outcomes['TOTAL_LOSS'] || 0}`;
+
       document.getElementById('statSlaveOrders').innerText = slaveOrdersCount.toLocaleString();
       document.getElementById('statMasterOrders').innerText = masterOrdersCount.toLocaleString();
       document.getElementById('statExposureSaved').innerText = `${expSavedPct}%`;
@@ -897,12 +920,14 @@
       const query = document.getElementById('searchTrade').value.trim().toLowerCase();
       const resFilter = document.getElementById('filterResult').value;
       const accFilter = document.getElementById('filterAccount').value;
+      const galeFilter = document.getElementById('filterGale') ? document.getElementById('filterGale').value : 'ALL';
 
       filteredTrades = simulatedTrades.filter(t => {
         const matchTime = !query || t.time.toLowerCase().includes(query);
         const matchRes = resFilter === 'ALL' || t.result === resFilter;
         const matchAcc = accFilter === 'ALL' || t.account === accFilter;
-        return matchTime && matchRes && matchAcc;
+        const matchGale = galeFilter === 'ALL' || (t.account === 'REAL' && String(t.galeLevel) === galeFilter);
+        return matchTime && matchRes && matchAcc && matchGale;
       });
 
       currentPage = 1;
@@ -913,6 +938,7 @@
       const tbody = document.getElementById('tradesTableBody');
       tbody.innerHTML = '';
 
+      const maxGales = parseInt(document.getElementById('ctrlGaleLevel').value) || 0;
       const total = filteredTrades.length;
       const start = (currentPage - 1) * pageSize;
       const end = Math.min(start + pageSize, total);
@@ -925,9 +951,7 @@
           ? '<span class="tag-rise">▲ RISE</span>'
           : '<span class="tag-fall">▼ FALL</span>';
 
-        const prevDirBadge = t.prev_dir === 'VERDE'
-          ? '<span style="color:#2ea043;font-weight:600;">🟢 Verde</span>'
-          : (t.prev_dir === 'VERMELHO' ? '<span style="color:#f85149;font-weight:600;">🔴 Vermelho</span>' : '-');
+        const prevDirBadge = t.prev_dir ? t.prev_dir : '-';
 
         const accBadge = t.account === 'REAL' 
           ? '<span class="acc-real">⭐ MASTER (REAL)</span>' 
@@ -937,8 +961,17 @@
           ? `<strong class="${t.pnlDelta >= 0 ? 'val-green' : 'val-red'}">${t.pnlDelta >= 0 ? '+' : ''}$${t.pnlDelta.toFixed(2)}</strong>`
           : '<span style="color:#8b949e;">$0.00 (Escudo)</span>';
 
-        const galeText = t.galeLevel === 0 ? 'Mão Fixa' : `G${t.galeLevel}`;
-        const stakeText = t.account === 'REAL' ? `$${t.stake.toFixed(2)} (${galeText})` : '-';
+        let galeBadgeText = '-';
+        if (t.account === 'REAL') {
+          if (maxGales === 0) {
+            galeBadgeText = 'Mão Fixa';
+          } else if (t.galeLevel === 0) {
+            galeBadgeText = '<span style="color:var(--blue-light);font-weight:600;">G0</span>';
+          } else {
+            galeBadgeText = `<span style="color:var(--val-gold);font-weight:700;">G${t.galeLevel}</span>`;
+          }
+        }
+        const stakeText = t.account === 'REAL' ? `$${t.stake.toFixed(2)} (${galeBadgeText})` : '-';
 
         tr.innerHTML = `
           <td>${start + i + 1}</td>
