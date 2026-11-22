@@ -341,7 +341,9 @@ def generate():
         <div class="control-group">
           <label>Estratégia Operacional</label>
           <select id="ctrlStrategy" onchange="onStrategyChange()">
-            <option value="TRES_MOSQUETEIROS" selected>⚔️ Três Mosqueteiros (2 Velas Iguais -> 3ª na Mesma Direção) [50s]</option>
+            <option value="ALTERNADA_RISE_FALL" selected>🔀 Alternância Contínua (Inicia RISE -> FALL -> RISE...) [50s]</option>
+            <option value="ALTERNADA_FALL_RISE">🔀 Alternância Contínua (Inicia FALL -> RISE -> FALL...) [50s]</option>
+            <option value="TRES_MOSQUETEIROS">⚔️ Três Mosqueteiros (2 Velas Iguais -> 3ª na Mesma Direção) [50s]</option>
             <option value="CONTRA_MOSQUETEIROS">🛡️ Contra Mosqueteiros (2 Velas Iguais -> Reversão na 3ª) [50s]</option>
             <option value="TRES_MOSQUETEIROS_ESTRITO">🎯 Três Mosqueteiros Estrito (Ciclos Fechados de 3 Velas) [50s]</option>
             <option value="REV_STREAK">🔁 Reversão por Streaks de Cores (Exaustão 6 a 15 Velas) [50s]</option>
@@ -616,7 +618,11 @@ def generate():
       }} else {{
         grpStreakCount.style.display = 'none';
         grpStreakDir.style.display = 'none';
-        if (st === 'TRES_MOSQUETEIROS') {{
+        if (st === 'ALTERNADA_RISE_FALL') {{
+          stBadge.innerText = 'Estratégia: Alternância Contínua (Inicia RISE -> FALL) [50s]';
+        }} else if (st === 'ALTERNADA_FALL_RISE') {{
+          stBadge.innerText = 'Estratégia: Alternância Contínua (Inicia FALL -> RISE) [50s]';
+        }} else if (st === 'TRES_MOSQUETEIROS') {{
           stBadge.innerText = 'Estratégia: Três Mosqueteiros (Seguindo 3º Candle) [50s]';
         }} else if (st === 'CONTRA_MOSQUETEIROS') {{
           stBadge.innerText = 'Estratégia: Contra Mosqueteiros (Reversão no 3º Candle) [50s]';

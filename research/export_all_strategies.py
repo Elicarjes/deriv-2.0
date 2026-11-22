@@ -294,7 +294,46 @@ strategies["CONTRA_MOSQUETEIROS"] = build_tres_mosqueteiros_strategy(mode="REVER
 print("Processando Três Mosqueteiros Estrito (Ciclos Fechados de 3 Velas)...")
 strategies["TRES_MOSQUETEIROS_ESTRITO"] = build_tres_mosqueteiros_strategy(mode="TREND", is_strict=True)
 
-# 5. Estratégia Anterior (Rise Fixo 15s GMT)
+# 5. Estratégia de Alternância Contínua (Rise -> Fall -> Rise -> Fall...)
+def build_alternancia_strategy(start_with="RISE", duration=50):
+    trades_list = []
+    wins = []
+    current_contract = start_with
+    
+    for i, c in enumerate(all_candles):
+        entry_p = c['open']
+        idx_exit = np.searchsorted(epochs, c['time'] + duration)
+        if idx_exit >= len(epochs):
+            continue
+            
+        exit_p = prices[idx_exit]
+        win = 1 if (current_contract == "RISE" and exit_p > entry_p) or (current_contract == "FALL" and exit_p < entry_p) else 0
+        wins.append(win)
+        
+        next_contract = "FALL" if current_contract == "RISE" else "RISE"
+        desc = f"Alternância #{i+1} (Ciclo: {'▲' if current_contract == 'RISE' else '▼'})"
+        
+        trades_list.append({
+            'time': c['dt'],
+            'prev_dir': desc,
+            'contract': current_contract,
+            'entry': round(float(entry_p), 2),
+            'exit': round(float(exit_p), 2),
+            'delta': round(float(exit_p - entry_p), 2),
+            'result': "WIN" if win == 1 else "LOSS",
+            'win': win
+        })
+        current_contract = next_contract
+        
+    return format_strategy_result(wins, trades_list)
+
+print("Processando Alternância (Inicia em RISE)...")
+strategies["ALTERNADA_RISE_FALL"] = build_alternancia_strategy(start_with="RISE", duration=50)
+
+print("Processando Alternância (Inicia em FALL)...")
+strategies["ALTERNADA_FALL_RISE"] = build_alternancia_strategy(start_with="FALL", duration=50)
+
+# 6. Estratégia Anterior (Rise Fixo 15s GMT)
 trades_15_list = []
 wins_15s = []
 for c in all_candles:
