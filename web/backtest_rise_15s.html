@@ -331,12 +331,12 @@
         <div class="control-group">
           <label>Estratégia Operacional</label>
           <select id="ctrlStrategy" onchange="onStrategyChange()">
-            <option value="ALTERNADA_RISE_FALL" selected>🔀 Alternância Contínua (Inicia RISE -> FALL -> RISE...) [50s]</option>
+            <option value="REV_STREAK" selected>🔁 Reversão por Streaks de Cores (Exaustão 6 a 15 Velas) [50s]</option>
+            <option value="ALTERNADA_RISE_FALL">🔀 Alternância Contínua (Inicia RISE -> FALL -> RISE...) [50s]</option>
             <option value="ALTERNADA_FALL_RISE">🔀 Alternância Contínua (Inicia FALL -> RISE -> FALL...) [50s]</option>
             <option value="TRES_MOSQUETEIROS">⚔️ Três Mosqueteiros (2 Velas Iguais -> 3ª na Mesma Direção) [50s]</option>
             <option value="CONTRA_MOSQUETEIROS">🛡️ Contra Mosqueteiros (2 Velas Iguais -> Reversão na 3ª) [50s]</option>
             <option value="TRES_MOSQUETEIROS_ESTRITO">🎯 Três Mosqueteiros Estrito (Ciclos Fechados de 3 Velas) [50s]</option>
-            <option value="REV_STREAK">🔁 Reversão por Streaks de Cores (Exaustão 6 a 15 Velas) [50s]</option>
             <option value="MILHAO_MINORIA_M5">🎯 Milhão Minoria (Blocos 5 min / M5) [50s]</option>
             <option value="MILHAO_MAIORIA_M5">🔥 Milhão Maioria (Blocos 5 min / M5) [50s]</option>
             <option value="MILHAO_MINORIA_MOVEL">⚡ Milhão Minoria Móvel (5 velas contínuas) [50s]</option>
@@ -348,13 +348,13 @@
         </div>
 
         <!-- Controles Específicos para Reversão por Streaks de Cores -->
-        <div class="control-group" id="groupCandleStreakCount" style="display: none;">
+        <div class="control-group" id="groupCandleStreakCount" style="display: block;">
           <label>Velas Consecutivas para Reversão</label>
           <select id="ctrlCandleStreakCount" onchange="onStrategyChange()">
             <option value="6">6 velas consecutivas</option>
-            <option value="7">7 velas consecutivas</option>
+            <option value="7" selected>7 velas consecutivas</option>
             <option value="8">8 velas consecutivas</option>
-            <option value="9" selected>9 velas consecutivas</option>
+            <option value="9">9 velas consecutivas</option>
             <option value="10">10 velas consecutivas</option>
             <option value="11">11 velas consecutivas</option>
             <option value="12">12 velas consecutivas</option>
@@ -364,7 +364,7 @@
           </select>
         </div>
 
-        <div class="control-group" id="groupCandleStreakDir" style="display: none;">
+        <div class="control-group" id="groupCandleStreakDir" style="display: block;">
           <label>Filtro de Cor (Gatilho)</label>
           <select id="ctrlCandleStreakDir" onchange="onStrategyChange()">
             <option value="BOTH" selected>Ambas (Vermelhos=RISE / Verdes=FALL)</option>
@@ -377,9 +377,9 @@
         <div class="control-group">
           <label>Modo de Operação</label>
           <select id="ctrlMode" onchange="onModeChange()">
-            <option value="LOSS_STREAK" selected>1 - Streaks de Derrotas (Loss)</option>
+            <option value="LOSS_STREAK">1 - Streaks de Derrotas (Loss)</option>
             <option value="WIN_STREAK">2 - Streaks de Vitórias (Win)</option>
-            <option value="DIRECT">3 - Sem Escudo (Direto na Real)</option>
+            <option value="DIRECT" selected>3 - Sem Escudo (Direto na Real)</option>
           </select>
         </div>
 
@@ -387,8 +387,8 @@
         <div class="control-group" id="groupStreakCount">
           <label>Quantidade de Streaks (Gatilho)</label>
           <select id="ctrlStreakCount" onchange="recalcSimulation()">
-            <option value="1">1 ocorrência (1x)</option>
-            <option value="2" selected>2 ocorrências consecutivas (2x)</option>
+            <option value="1" selected>1 ocorrência (1x)</option>
+            <option value="2">2 ocorrências consecutivas (2x)</option>
             <option value="3">3 ocorrências consecutivas (3x)</option>
             <option value="4">4 ocorrências consecutivas (4x)</option>
             <option value="5">5 ocorrências consecutivas (5x)</option>
@@ -409,13 +409,13 @@
         <div class="control-group">
           <label>Gales na Conta Real</label>
           <select id="ctrlGaleLevel" onchange="recalcSimulation()">
-            <option value="0" selected>Mão Fixa (Padrão - Sem Gale)</option>
+            <option value="0">Mão Fixa (Padrão - Sem Gale)</option>
             <option value="1">Gale 1 (G1)</option>
             <option value="2">Gale 2 (G2)</option>
             <option value="3">Gale 3 (G3)</option>
             <option value="4">Gale 4 (G4)</option>
             <option value="5">Gale 5 (G5)</option>
-            <option value="6">Gale 6 (G6)</option>
+            <option value="6" selected>Gale 6 (G6)</option>
             <option value="7">Gale 7 (G7)</option>
             <option value="8">Gale 8 (G8)</option>
             <option value="9">Gale 9 (G9)</option>
@@ -426,7 +426,7 @@
         <!-- Stake Base -->
         <div class="control-group">
           <label>Stake Base na Real ($)</label>
-          <input type="number" id="ctrlStake" value="1.00" step="0.5" min="0.35" oninput="recalcSimulation()">
+          <input type="number" id="ctrlStake" value="0.35" step="0.05" min="0.35" oninput="recalcSimulation()">
         </div>
 
         <!-- Payout -->
@@ -438,7 +438,7 @@
         <!-- Multiplicador -->
         <div class="control-group" id="groupMultiplier">
           <label>Multiplicador do Gale</label>
-          <input type="number" id="ctrlMultiplier" value="2.15" step="0.05" min="1.5" max="5.0" oninput="recalcSimulation()">
+          <input type="number" id="ctrlMultiplier" value="2.40" step="0.05" min="1.5" max="5.0" oninput="recalcSimulation()">
         </div>
       </div>
 
@@ -473,6 +473,7 @@
             <tr>
               <th>Nível na Conta Real</th>
               <th>Stake por Ordem</th>
+              <th>Saldo Necessário (Banca)</th>
               <th>Vitórias (Wins)</th>
               <th>% Individual</th>
               <th>Acumulado</th>
@@ -844,10 +845,17 @@
       const titleEl = document.getElementById('logSectionTitle');
       if (titleEl) titleEl.innerText = `📋 Log Individual das Ordens (${ds.trades.length} Sinais / Entradas)`;
 
+      let totalBancaNeeded = 0;
+      for (let i = 0; i <= maxGales; i++) {
+        totalBancaNeeded += baseStake * Math.pow(multiplier, i);
+      }
+
       const tableTitleEl = document.getElementById('martingaleTableTitle');
       if (tableTitleEl) tableTitleEl.innerText = maxGales === 0 ? '📊 Simulação Mão Fixa na Conta Real' : `📊 Ciclos de Gale na Conta Real (G0 até G${maxGales})`;
       const tableSumEl = document.getElementById('martingaleTableSummary');
-      if (tableSumEl) tableSumEl.innerText = `Total de Ciclos: ${totalCycles} | Stops de Ciclo: ${outcomes['TOTAL_LOSS'] || 0}`;
+      if (tableSumEl) {
+        tableSumEl.innerHTML = `Total de Ciclos: ${totalCycles} | Stops de Ciclo: ${outcomes['TOTAL_LOSS'] || 0} &nbsp;|&nbsp; <span style="background: rgba(227, 179, 65, 0.15); color: var(--val-gold); border: 1px solid rgba(227, 179, 65, 0.4); padding: 3px 8px; border-radius: 6px; font-weight: 700;">💰 Saldo Necessário: $${totalBancaNeeded.toFixed(2)}</span>`;
+      }
 
       document.getElementById('statSlaveOrders').innerText = slaveOrdersCount.toLocaleString();
       document.getElementById('statMasterOrders').innerText = masterOrdersCount.toLocaleString();
@@ -859,11 +867,13 @@
       const tbody = document.getElementById('martingaleTableBody');
       tbody.innerHTML = '';
       let cumCycles = 0;
+      let cumStakeRequired = 0;
 
       for (let i = 0; i <= maxGales; i++) {
         const count = outcomes[`G${i}`] || 0;
         cumCycles += count;
         const stakeN = baseStake * Math.pow(multiplier, i);
+        cumStakeRequired += stakeN;
         const pctInd = totalCycles > 0 ? (count / totalCycles * 100).toFixed(2) : '0.00';
         const pctCum = totalCycles > 0 ? (cumCycles / totalCycles * 100).toFixed(2) : '0.00';
 
@@ -871,6 +881,7 @@
         tr.innerHTML = `
           <td><strong>${i === 0 ? (maxGales === 0 ? 'Mão Fixa (G0)' : 'G0 (1ª Mão)') : `G${i} (${i}º Gale)`}</strong></td>
           <td>$${stakeN.toFixed(2)}</td>
+          <td><strong style="color: var(--val-gold);">$${cumStakeRequired.toFixed(2)}</strong></td>
           <td><span class="val-green">${count}</span></td>
           <td>${pctInd}%</td>
           <td>${cumCycles}</td>
@@ -886,6 +897,7 @@
         trLoss.innerHTML = `
           <td><strong class="val-red">LOSS TOTAL (Stop Ciclo)</strong></td>
           <td>-</td>
+          <td><strong class="val-red">-$${totalBancaNeeded.toFixed(2)}</strong></td>
           <td><span class="val-red">${lossTot}</span></td>
           <td>${pctLoss}%</td>
           <td>-</td>
