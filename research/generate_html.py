@@ -754,7 +754,7 @@ def generate():
       document.getElementById('kpiPnLSub').innerText = `${{modeLabel}} | ${{galeLabel}} | Payout: ${{(payoutFactor * 100).toFixed(0)}}%`;
 
       const titleEl = document.getElementById('logSectionTitle');
-      if (titleEl) titleEl.innerText = `📋 Log Individual das Ordens (${{dataset.trades.length}} Sinais / Entradas)`;
+      if (titleEl) titleEl.innerText = `📋 Log Individual das Ordens (${{ds.trades.length}} Sinais / Entradas)`;
 
       document.getElementById('statSlaveOrders').innerText = slaveOrdersCount.toLocaleString();
       document.getElementById('statMasterOrders').innerText = masterOrdersCount.toLocaleString();
