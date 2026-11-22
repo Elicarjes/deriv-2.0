@@ -3,39 +3,20 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import json
-import pandas as pd
-import numpy as np
 from itertools import groupby
 from collections import Counter
 from datetime import datetime, timezone
 
-df_ticks = pd.read_csv('data/ticks_R_100_2026-11-21.csv')
-epochs = df_ticks['epoch'].to_numpy()
-prices = df_ticks['price'].to_numpy()
+from research.db_manager import get_rolling_window_candles, get_historical_records
 
-# 2026-11-21 00:00:00 GMT = 1795219200
-# 2026-11-21 23:59:00 GMT = 1795305540
-day_start_gmt = 1795219200
-day_end_gmt = 1795305600
+# 1. Carregar candles da janela móvel (4 dias fechados + dia em andamento)
+all_candles, window_info = get_rolling_window_candles(symbol="R_100", days_closed=4)
+print(f"Total de velas M1 na janela de backtest: {len(all_candles)} (de {window_info['start_time']} até {window_info['end_time']})")
+print(f"Dias presentes: {', '.join(window_info['days_list'])}")
 
-# 1. Pré-computar todos os 1.440 candles de M1 do dia (Open, Close, Cor)
-all_candles = []
-for c_open in range(day_start_gmt, day_end_gmt, 60):
-    idx_open = np.searchsorted(epochs, c_open)
-    idx_close = np.searchsorted(epochs, c_open + 60)
-    if idx_open < len(epochs) and idx_close < len(epochs):
-        o = prices[idx_open]
-        c = prices[idx_close]
-        color = "VERDE" if c > o else ("VERMELHO" if c < o else "DOJI")
-        all_candles.append({
-            'time': c_open,
-            'dt': datetime.fromtimestamp(c_open, timezone.utc).strftime('%H:%M:%S'),
-            'color': color,
-            'open': o,
-            'close': c
-        })
-
-print(f"Total de velas M1 computadas: {len(all_candles)}")
+# Obter recordes históricos permanentes do banco SQLite
+historical_records = get_historical_records(symbol="R_100")
+print(f"Recordes históricos carregados do DB: {historical_records['total_streaks']} streaks >= 6 velas.")
 
 def format_strategy_result(wins, trades_list):
     streaks = [(k, len(list(g))) for k, g in groupby(wins)]
@@ -61,8 +42,8 @@ def format_strategy_result(wins, trades_list):
 
 strategies = {}
 
-# 1. Estratégia Seguidor de Cor (Trend 50s) & Reversão (50s)
-def build_single_candle_strategy(mode="TREND", duration=50):
+# 1. Seguidor de Cor (Trend) & Reversão Simples
+def build_single_candle_strategy(mode="TREND"):
     trades_list = []
     wins = []
     
@@ -80,11 +61,7 @@ def build_single_candle_strategy(mode="TREND", duration=50):
             continue
             
         entry_price = curr_c['open']
-        idx_exit = np.searchsorted(epochs, curr_c['time'] + duration)
-        if idx_exit >= len(epochs):
-            continue
-            
-        exit_price = prices[idx_exit]
+        exit_price = curr_c['close']
         
         if contract_type == "RISE":
             win = 1 if exit_price > entry_price else 0
@@ -92,8 +69,10 @@ def build_single_candle_strategy(mode="TREND", duration=50):
             win = 1 if exit_price < entry_price else 0
             
         wins.append(win)
+        day_str = curr_c['dt_utc'].split()[0]
         trades_list.append({
-            'time': curr_c['dt'],
+            'time': curr_c['dt_utc'].replace(" GMT", ""),
+            'day': day_str,
             'prev_dir': prev_dir,
             'contract': contract_type,
             'entry': round(float(entry_price), 2),
@@ -104,14 +83,13 @@ def build_single_candle_strategy(mode="TREND", duration=50):
         })
     return format_strategy_result(wins, trades_list)
 
-print("Processando Seguidor de Cor M1 (50s)...")
-strategies["TREND_50S"] = build_single_candle_strategy(mode="TREND", duration=50)
+print("Processando Seguidor de Cor M1...")
+strategies["TREND_50S"] = build_single_candle_strategy(mode="TREND")
+print("Processando Reversão de Cor M1...")
+strategies["REVERSAL_50S"] = build_single_candle_strategy(mode="REVERSAL")
 
-print("Processando Reversão de Cor M1 (50s)...")
-strategies["REVERSAL_50S"] = build_single_candle_strategy(mode="REVERSAL", duration=50)
-
-# 2. Estratégia do Milhão (M5 - Blocos de 5 minutos)
-def build_milhao_strategy(mode="MINORIA", block_size=5, duration=50, is_rolling=False):
+# 2. Estratégia do Milhão (M5 - Blocos de 5 minutos e Móvel)
+def build_milhao_strategy(mode="MINORIA", block_size=5, is_rolling=False):
     trades_list = []
     wins = []
     
@@ -140,8 +118,8 @@ def build_milhao_strategy(mode="MINORIA", block_size=5, duration=50, is_rolling=
                 contract_type = "FALL"
                 target_desc = f"{greens}V / {reds}R (Minoria: 🔴)"
             else:
-                continue # Empate
-        else: # MAIORIA
+                continue
+        else:
             if greens > reds:
                 contract_type = "RISE"
                 target_desc = f"{greens}V / {reds}R (Maioria: 🟢)"
@@ -149,14 +127,10 @@ def build_milhao_strategy(mode="MINORIA", block_size=5, duration=50, is_rolling=
                 contract_type = "FALL"
                 target_desc = f"{greens}V / {reds}R (Maioria: 🔴)"
             else:
-                continue # Empate
+                continue
                 
         entry_price = next_c['open']
-        idx_exit = np.searchsorted(epochs, next_c['time'] + duration)
-        if idx_exit >= len(epochs):
-            continue
-            
-        exit_price = prices[idx_exit]
+        exit_price = next_c['close']
         
         if contract_type == "RISE":
             win = 1 if exit_price > entry_price else 0
@@ -164,8 +138,10 @@ def build_milhao_strategy(mode="MINORIA", block_size=5, duration=50, is_rolling=
             win = 1 if exit_price < entry_price else 0
             
         wins.append(win)
+        day_str = next_c['dt_utc'].split()[0]
         trades_list.append({
-            'time': next_c['dt'],
+            'time': next_c['dt_utc'].replace(" GMT", ""),
+            'day': day_str,
             'prev_dir': target_desc,
             'contract': contract_type,
             'entry': round(float(entry_price), 2),
@@ -176,20 +152,17 @@ def build_milhao_strategy(mode="MINORIA", block_size=5, duration=50, is_rolling=
         })
     return format_strategy_result(wins, trades_list)
 
-print("Processando Milhão Minoria M5 (Blocos 5 min)...")
-strategies["MILHAO_MINORIA_M5"] = build_milhao_strategy(mode="MINORIA", block_size=5, duration=50, is_rolling=False)
+print("Processando Milhão Minoria M5...")
+strategies["MILHAO_MINORIA_M5"] = build_milhao_strategy(mode="MINORIA", block_size=5, is_rolling=False)
+print("Processando Milhão Maioria M5...")
+strategies["MILHAO_MAIORIA_M5"] = build_milhao_strategy(mode="MAIORIA", block_size=5, is_rolling=False)
+print("Processando Milhão Minoria Móvel...")
+strategies["MILHAO_MINORIA_MOVEL"] = build_milhao_strategy(mode="MINORIA", block_size=5, is_rolling=True)
+print("Processando Milhão Maioria Móvel...")
+strategies["MILHAO_MAIORIA_MOVEL"] = build_milhao_strategy(mode="MAIORIA", block_size=5, is_rolling=True)
 
-print("Processando Milhão Maioria M5 (Blocos 5 min)...")
-strategies["MILHAO_MAIORIA_M5"] = build_milhao_strategy(mode="MAIORIA", block_size=5, duration=50, is_rolling=False)
-
-print("Processando Milhão Minoria Móvel (5 velas contínuas)...")
-strategies["MILHAO_MINORIA_MOVEL"] = build_milhao_strategy(mode="MINORIA", block_size=5, duration=50, is_rolling=True)
-
-print("Processando Milhão Maioria Móvel (5 velas contínuas)...")
-strategies["MILHAO_MAIORIA_MOVEL"] = build_milhao_strategy(mode="MAIORIA", block_size=5, duration=50, is_rolling=True)
-
-# 3. Estratégia de Reversão por Streaks de Cor (Exaustão de Vela 6 a 15)
-def build_reversal_streak_strategy(N=6, trigger_color="BOTH", duration=50):
+# 3. Estratégia de Reversão por Streaks de Cor (Exaustão 6 a 15)
+def build_reversal_streak_strategy(N=6, trigger_color="BOTH"):
     trades_list = []
     wins = []
     consec_red = 0
@@ -209,22 +182,22 @@ def build_reversal_streak_strategy(N=6, trigger_color="BOTH", duration=50):
             
         if signal:
             entry_price = c['open']
-            idx_exit = np.searchsorted(epochs, c['time'] + duration)
-            if idx_exit < len(epochs):
-                exit_price = prices[idx_exit]
-                win = 1 if (signal == "RISE" and exit_price > entry_price) or (signal == "FALL" and exit_price < entry_price) else 0
-                wins.append(win)
-                trades_list.append({
-                    'time': c['dt'],
-                    'prev_dir': desc,
-                    'contract': signal,
-                    'entry': round(float(entry_price), 2),
-                    'exit': round(float(exit_price), 2),
-                    'delta': round(float(exit_price - entry_price), 2),
-                    'result': "WIN" if win == 1 else "LOSS",
-                    'win': win
-                })
-                
+            exit_price = c['close']
+            win = 1 if (signal == "RISE" and exit_price > entry_price) or (signal == "FALL" and exit_price < entry_price) else 0
+            wins.append(win)
+            day_str = c['dt_utc'].split()[0]
+            trades_list.append({
+                'time': c['dt_utc'].replace(" GMT", ""),
+                'day': day_str,
+                'prev_dir': desc,
+                'contract': signal,
+                'entry': round(float(entry_price), 2),
+                'exit': round(float(exit_price), 2),
+                'delta': round(float(exit_price - entry_price), 2),
+                'result': "WIN" if win == 1 else "LOSS",
+                'win': win
+            })
+            
         # Atualizar contadores
         if c['color'] == 'VERMELHO':
             consec_red += 1
@@ -238,14 +211,14 @@ def build_reversal_streak_strategy(N=6, trigger_color="BOTH", duration=50):
             
     return format_strategy_result(wins, trades_list)
 
-print("Processando Estratégias de Reversão por Streaks de Cores (6 a 15 velas)...")
+print("Processando Reversões por Streaks de Cores (6 a 15 velas)...")
 for n in range(6, 16):
     strategies[f"REV_STREAK_{n}_BOTH"] = build_reversal_streak_strategy(N=n, trigger_color="BOTH")
     strategies[f"REV_STREAK_{n}_RED"] = build_reversal_streak_strategy(N=n, trigger_color="RED")
     strategies[f"REV_STREAK_{n}_GREEN"] = build_reversal_streak_strategy(N=n, trigger_color="GREEN")
 
-# 4. Estratégia dos Três Mosqueteiros (2 candles iguais -> 3º na mesma direção)
-def build_tres_mosqueteiros_strategy(mode="TREND", is_strict=False, duration=50):
+# 4. Três Mosqueteiros
+def build_tres_mosqueteiros_strategy(mode="TREND", is_strict=False):
     trades_list = []
     wins = []
     i = 2
@@ -264,57 +237,51 @@ def build_tres_mosqueteiros_strategy(mode="TREND", is_strict=False, duration=50)
                 desc = f"2x {base_color}s (Contra Mosqueteiro -> {contract})"
                 
             entry_p = c3['open']
-            idx_exit = np.searchsorted(epochs, c3['time'] + duration)
-            if idx_exit < len(epochs):
-                exit_p = prices[idx_exit]
-                win = 1 if (contract == "RISE" and exit_p > entry_p) or (contract == "FALL" and exit_p < entry_p) else 0
-                wins.append(win)
-                trades_list.append({
-                    'time': c3['dt'],
-                    'prev_dir': desc,
-                    'contract': contract,
-                    'entry': round(float(entry_p), 2),
-                    'exit': round(float(exit_p), 2),
-                    'delta': round(float(exit_p - entry_p), 2),
-                    'result': "WIN" if win == 1 else "LOSS",
-                    'win': win
-                })
+            exit_p = c3['close']
+            win = 1 if (contract == "RISE" and exit_p > entry_p) or (contract == "FALL" and exit_p < entry_p) else 0
+            wins.append(win)
+            day_str = c3['dt_utc'].split()[0]
+            trades_list.append({
+                'time': c3['dt_utc'].replace(" GMT", ""),
+                'day': day_str,
+                'prev_dir': desc,
+                'contract': contract,
+                'entry': round(float(entry_p), 2),
+                'exit': round(float(exit_p), 2),
+                'delta': round(float(exit_p - entry_p), 2),
+                'result': "WIN" if win == 1 else "LOSS",
+                'win': win
+            })
             i += 3 if is_strict else 1
         else:
             i += 1
             
     return format_strategy_result(wins, trades_list)
 
-print("Processando Três Mosqueteiros (Seguindo 3º candle)...")
+print("Processando Três Mosqueteiros...")
 strategies["TRES_MOSQUETEIROS"] = build_tres_mosqueteiros_strategy(mode="TREND", is_strict=False)
-
-print("Processando Contra Mosqueteiros (Reversão no 3º candle)...")
 strategies["CONTRA_MOSQUETEIROS"] = build_tres_mosqueteiros_strategy(mode="REVERSAL", is_strict=False)
-
-print("Processando Três Mosqueteiros Estrito (Ciclos Fechados de 3 Velas)...")
 strategies["TRES_MOSQUETEIROS_ESTRITO"] = build_tres_mosqueteiros_strategy(mode="TREND", is_strict=True)
 
-# 5. Estratégia de Alternância Contínua (Rise -> Fall -> Rise -> Fall...)
-def build_alternancia_strategy(start_with="RISE", duration=50):
+# 5. Alternância Contínua
+def build_alternancia_strategy(start_with="RISE"):
     trades_list = []
     wins = []
     current_contract = start_with
     
     for i, c in enumerate(all_candles):
         entry_p = c['open']
-        idx_exit = np.searchsorted(epochs, c['time'] + duration)
-        if idx_exit >= len(epochs):
-            continue
-            
-        exit_p = prices[idx_exit]
+        exit_p = c['close']
         win = 1 if (current_contract == "RISE" and exit_p > entry_p) or (current_contract == "FALL" and exit_p < entry_p) else 0
         wins.append(win)
         
         next_contract = "FALL" if current_contract == "RISE" else "RISE"
         desc = f"Alternância #{i+1} (Ciclo: {'▲' if current_contract == 'RISE' else '▼'})"
+        day_str = c['dt_utc'].split()[0]
         
         trades_list.append({
-            'time': c['dt'],
+            'time': c['dt_utc'].replace(" GMT", ""),
+            'day': day_str,
             'prev_dir': desc,
             'contract': current_contract,
             'entry': round(float(entry_p), 2),
@@ -327,47 +294,23 @@ def build_alternancia_strategy(start_with="RISE", duration=50):
         
     return format_strategy_result(wins, trades_list)
 
-print("Processando Alternância (Inicia em RISE)...")
-strategies["ALTERNADA_RISE_FALL"] = build_alternancia_strategy(start_with="RISE", duration=50)
-
-print("Processando Alternância (Inicia em FALL)...")
-strategies["ALTERNADA_FALL_RISE"] = build_alternancia_strategy(start_with="FALL", duration=50)
-
-# 6. Estratégia Anterior (Rise Fixo 15s GMT)
-trades_15_list = []
-wins_15s = []
-for c in all_candles:
-    idx_entry = np.searchsorted(epochs, c['time'])
-    idx_exit = np.searchsorted(epochs, c['time'] + 15)
-    if idx_entry >= len(epochs) or idx_exit >= len(epochs):
-        continue
-    entry_p = prices[idx_entry]
-    exit_p = prices[idx_exit]
-    win = 1 if exit_p > entry_p else 0
-    wins_15s.append(win)
-    trades_15_list.append({
-        'time': c['dt'],
-        'prev_dir': '-',
-        'contract': 'RISE',
-        'entry': round(float(entry_p), 2),
-        'exit': round(float(exit_p), 2),
-        'delta': round(float(exit_p - entry_p), 2),
-        'result': "WIN" if win == 1 else "LOSS",
-        'win': win
-    })
-
-strategies["RISE_15S"] = format_strategy_result(wins_15s, trades_15_list)
+print("Processando Alternâncias...")
+strategies["ALTERNADA_RISE_FALL"] = build_alternancia_strategy(start_with="RISE")
+strategies["ALTERNADA_FALL_RISE"] = build_alternancia_strategy(start_with="FALL")
 
 full_data = {
     'symbol': 'R_100',
-    'date': '2026-11-21 GMT (Relógio Oficial Deriv)',
+    'date': f"{window_info['days_list'][0]} até {window_info['days_list'][-1]} ({len(all_candles):,} velas / 5 dias)",
     'timezone': 'GMT (UTC+0)',
+    'window_info': window_info,
+    'historical_records': historical_records,
     'strategies': strategies
 }
 
-with open('data/backtest_result.json', 'w', encoding='utf-8') as f:
+output_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "backtest_result.json")
+with open(output_path, 'w', encoding='utf-8') as f:
     json.dump(full_data, f, ensure_ascii=False, indent=2)
 
-print("\n[OK] Sucesso! data/backtest_result.json atualizado com todas as estratégias do Milhão!")
-for k, s in strategies.items():
-    print(f"-> {k}: {s['total_trades']} trades | Wins: {s['direct_wins']} | Losses: {s['direct_losses']} | Assertividade: {s['direct_rate']}%")
+print(f"\n[OK] Sucesso! {output_path} gerado com sucesso!")
+print(f"Total de estratégias compiladas: {len(strategies)}")
+print(f"Recorde Histórico Perpétuo: {historical_records['max_overall']['streak_len']} velas consecutivas [{historical_records['max_overall']['direction']}] em {historical_records['max_overall']['start_time']}")
