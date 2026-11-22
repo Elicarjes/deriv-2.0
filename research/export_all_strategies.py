@@ -244,7 +244,57 @@ for n in range(6, 16):
     strategies[f"REV_STREAK_{n}_RED"] = build_reversal_streak_strategy(N=n, trigger_color="RED")
     strategies[f"REV_STREAK_{n}_GREEN"] = build_reversal_streak_strategy(N=n, trigger_color="GREEN")
 
-# 4. Estratégia Anterior (Rise Fixo 15s GMT)
+# 4. Estratégia dos Três Mosqueteiros (2 candles iguais -> 3º na mesma direção)
+def build_tres_mosqueteiros_strategy(mode="TREND", is_strict=False, duration=50):
+    trades_list = []
+    wins = []
+    i = 2
+    while i < len(all_candles):
+        c1 = all_candles[i - 2]
+        c2 = all_candles[i - 1]
+        c3 = all_candles[i]
+        
+        if c1['color'] in ('VERDE', 'VERMELHO') and c1['color'] == c2['color']:
+            base_color = c1['color']
+            if mode == "TREND":
+                contract = "RISE" if base_color == "VERDE" else "FALL"
+                desc = f"2x {base_color}s (3º Mosqueteiro -> {contract})"
+            else:
+                contract = "FALL" if base_color == "VERDE" else "RISE"
+                desc = f"2x {base_color}s (Contra Mosqueteiro -> {contract})"
+                
+            entry_p = c3['open']
+            idx_exit = np.searchsorted(epochs, c3['time'] + duration)
+            if idx_exit < len(epochs):
+                exit_p = prices[idx_exit]
+                win = 1 if (contract == "RISE" and exit_p > entry_p) or (contract == "FALL" and exit_p < entry_p) else 0
+                wins.append(win)
+                trades_list.append({
+                    'time': c3['dt'],
+                    'prev_dir': desc,
+                    'contract': contract,
+                    'entry': round(float(entry_p), 2),
+                    'exit': round(float(exit_p), 2),
+                    'delta': round(float(exit_p - entry_p), 2),
+                    'result': "WIN" if win == 1 else "LOSS",
+                    'win': win
+                })
+            i += 3 if is_strict else 1
+        else:
+            i += 1
+            
+    return format_strategy_result(wins, trades_list)
+
+print("Processando Três Mosqueteiros (Seguindo 3º candle)...")
+strategies["TRES_MOSQUETEIROS"] = build_tres_mosqueteiros_strategy(mode="TREND", is_strict=False)
+
+print("Processando Contra Mosqueteiros (Reversão no 3º candle)...")
+strategies["CONTRA_MOSQUETEIROS"] = build_tres_mosqueteiros_strategy(mode="REVERSAL", is_strict=False)
+
+print("Processando Três Mosqueteiros Estrito (Ciclos Fechados de 3 Velas)...")
+strategies["TRES_MOSQUETEIROS_ESTRITO"] = build_tres_mosqueteiros_strategy(mode="TREND", is_strict=True)
+
+# 5. Estratégia Anterior (Rise Fixo 15s GMT)
 trades_15_list = []
 wins_15s = []
 for c in all_candles:

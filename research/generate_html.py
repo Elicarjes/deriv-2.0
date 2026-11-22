@@ -341,8 +341,11 @@ def generate():
         <div class="control-group">
           <label>Estratégia Operacional</label>
           <select id="ctrlStrategy" onchange="onStrategyChange()">
+            <option value="TRES_MOSQUETEIROS" selected>⚔️ Três Mosqueteiros (2 Velas Iguais -> 3ª na Mesma Direção) [50s]</option>
+            <option value="CONTRA_MOSQUETEIROS">🛡️ Contra Mosqueteiros (2 Velas Iguais -> Reversão na 3ª) [50s]</option>
+            <option value="TRES_MOSQUETEIROS_ESTRITO">🎯 Três Mosqueteiros Estrito (Ciclos Fechados de 3 Velas) [50s]</option>
             <option value="REV_STREAK">🔁 Reversão por Streaks de Cores (Exaustão 6 a 15 Velas) [50s]</option>
-            <option value="MILHAO_MINORIA_M5" selected>🎯 Milhão Minoria (Blocos 5 min / M5) [50s]</option>
+            <option value="MILHAO_MINORIA_M5">🎯 Milhão Minoria (Blocos 5 min / M5) [50s]</option>
             <option value="MILHAO_MAIORIA_M5">🔥 Milhão Maioria (Blocos 5 min / M5) [50s]</option>
             <option value="MILHAO_MINORIA_MOVEL">⚡ Milhão Minoria Móvel (5 velas contínuas) [50s]</option>
             <option value="MILHAO_MAIORIA_MOVEL">⚡ Milhão Maioria Móvel (5 velas contínuas) [50s]</option>
@@ -613,7 +616,13 @@ def generate():
       }} else {{
         grpStreakCount.style.display = 'none';
         grpStreakDir.style.display = 'none';
-        if (st === 'MILHAO_MINORIA_M5') {{
+        if (st === 'TRES_MOSQUETEIROS') {{
+          stBadge.innerText = 'Estratégia: Três Mosqueteiros (Seguindo 3º Candle) [50s]';
+        }} else if (st === 'CONTRA_MOSQUETEIROS') {{
+          stBadge.innerText = 'Estratégia: Contra Mosqueteiros (Reversão no 3º Candle) [50s]';
+        }} else if (st === 'TRES_MOSQUETEIROS_ESTRITO') {{
+          stBadge.innerText = 'Estratégia: Três Mosqueteiros Estrito (Ciclos Fechados) [50s]';
+        }} else if (st === 'MILHAO_MINORIA_M5') {{
           stBadge.innerText = 'Estratégia: Milhão Minoria (Blocos M5 / 50s)';
         }} else if (st === 'MILHAO_MAIORIA_M5') {{
           stBadge.innerText = 'Estratégia: Milhão Maioria (Blocos M5 / 50s)';
