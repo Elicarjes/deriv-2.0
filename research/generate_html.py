@@ -391,6 +391,10 @@ def generate():
             <option value="1">Gale 1 (G1)</option>
             <option value="2">Gale 2 (G2)</option>
             <option value="3">Gale 3 (G3)</option>
+            <option value="4">Gale 4 (G4)</option>
+            <option value="5">Gale 5 (G5)</option>
+            <option value="6">Gale 6 (G6)</option>
+            <option value="7">Gale 7 (G7)</option>
           </select>
         </div>
 
