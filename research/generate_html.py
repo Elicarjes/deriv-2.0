@@ -671,9 +671,10 @@ def generate():
           let pnlDelta = 0;
 
           if (t.win === 1) {{
-            const profit = (stake * payoutFactor) - masterAccumLoss;
-            currentRealPnl += profit;
-            pnlDelta = profit;
+            const winProfit = stake * payoutFactor;
+            const cycleNet = winProfit - masterAccumLoss;
+            currentRealPnl += winProfit;
+            pnlDelta = winProfit;
             masterWins++;
             outcomes[`G${{masterGale}}`] = (outcomes[`G${{masterGale}}`] || 0) + 1;
             totalCycles++;
@@ -683,6 +684,7 @@ def generate():
               account: 'REAL',
               stake: stake,
               pnlDelta: pnlDelta,
+              cycleNet: cycleNet,
               galeLevel: masterGale
             }});
 
@@ -702,6 +704,7 @@ def generate():
               account: 'REAL',
               stake: stake,
               pnlDelta: pnlDelta,
+              cycleNet: -masterAccumLoss,
               galeLevel: masterGale
             }});
 
@@ -967,9 +970,17 @@ def generate():
           ? '<span class="acc-real">⭐ MASTER (REAL)</span>' 
           : '<span class="acc-demo">🛡️ SLAVE (DEMO)</span>';
 
-        const pnlText = t.account === 'REAL'
-          ? `<strong class="${{t.pnlDelta >= 0 ? 'val-green' : 'val-red'}}">${{t.pnlDelta >= 0 ? '+' : ''}}$${{t.pnlDelta.toFixed(2)}}</strong>`
-          : '<span style="color:#8b949e;">$0.00 (Escudo)</span>';
+        let pnlText = '<span style="color:#8b949e;">$0.00 (Escudo)</span>';
+        if (t.account === 'REAL') {{
+          if (t.win === 1) {{
+            const netBadge = (t.cycleNet !== undefined && t.galeLevel > 0)
+              ? ` <span style="font-size:11px;color:#8b949e;">(Líq: +$${{t.cycleNet.toFixed(2)}})</span>`
+              : '';
+            pnlText = `<strong class="val-green">+$${{t.pnlDelta.toFixed(2)}}</strong>${{netBadge}}`;
+          }} else {{
+            pnlText = `<strong class="val-red">-$${{Math.abs(t.pnlDelta).toFixed(2)}}</strong>`;
+          }}
+        }}
 
         let galeBadgeText = '-';
         if (t.account === 'REAL') {{
