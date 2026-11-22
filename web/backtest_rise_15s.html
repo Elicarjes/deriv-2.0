@@ -370,18 +370,31 @@
         <div class="control-group">
           <label>Estratégia Operacional</label>
           <select id="ctrlStrategy" onchange="onStrategyChange()">
-            <option value="REV_STREAK" selected>🔁 Reversão por Streaks de Cores (Exaustão 6 a 15 Velas) [50s]</option>
-            <option value="ALTERNADA_RISE_FALL">🔀 Alternância Contínua (Inicia RISE -> FALL -> RISE...) [50s]</option>
-            <option value="ALTERNADA_FALL_RISE">🔀 Alternância Contínua (Inicia FALL -> RISE -> FALL...) [50s]</option>
-            <option value="TRES_MOSQUETEIROS">⚔️ Três Mosqueteiros (2 Velas Iguais -> 3ª na Mesma Direção) [50s]</option>
-            <option value="CONTRA_MOSQUETEIROS">🛡️ Contra Mosqueteiros (2 Velas Iguais -> Reversão na 3ª) [50s]</option>
-            <option value="TRES_MOSQUETEIROS_ESTRITO">🎯 Três Mosqueteiros Estrito (Ciclos Fechados de 3 Velas) [50s]</option>
-            <option value="MILHAO_MINORIA_M5">🎯 Milhão Minoria (Blocos 5 min / M5) [50s]</option>
-            <option value="MILHAO_MAIORIA_M5">🔥 Milhão Maioria (Blocos 5 min / M5) [50s]</option>
-            <option value="MILHAO_MINORIA_MOVEL">⚡ Milhão Minoria Móvel (5 velas contínuas) [50s]</option>
-            <option value="MILHAO_MAIORIA_MOVEL">⚡ Milhão Maioria Móvel (5 velas contínuas) [50s]</option>
-            <option value="TREND_50S">🟢 Seguidor de Cor M1 (Verde=Rise / Vermelho=Fall) [50s]</option>
-            <option value="REVERSAL_50S">🔄 Reversão de Cor M1 (Verde=Fall / Vermelho=Rise) [50s]</option>
+            <option value="REV_STREAK" selected>🔁 Reversão por Streaks de Cores (Exaustão 6 a 15 Velas)</option>
+            <option value="ALTERNADA_RISE_FALL">🔀 Alternância Contínua (Inicia RISE -> FALL -> RISE...)</option>
+            <option value="ALTERNADA_FALL_RISE">🔀 Alternância Contínua (Inicia FALL -> RISE -> FALL...)</option>
+            <option value="TRES_MOSQUETEIROS">⚔️ Três Mosqueteiros (2 Velas Iguais -> 3ª na Mesma Direção)</option>
+            <option value="CONTRA_MOSQUETEIROS">🛡️ Contra Mosqueteiros (2 Velas Iguais -> Reversão na 3ª)</option>
+            <option value="TRES_MOSQUETEIROS_ESTRITO">🎯 Três Mosqueteiros Estrito (Ciclos Fechados de 3 Velas)</option>
+            <option value="MILHAO_MINORIA_M5">🎯 Milhão Minoria (Blocos 5 min / M5)</option>
+            <option value="MILHAO_MAIORIA_M5">🔥 Milhão Maioria (Blocos 5 min / M5)</option>
+            <option value="MILHAO_MINORIA_MOVEL">⚡ Milhão Minoria Móvel (5 velas contínuas)</option>
+            <option value="MILHAO_MAIORIA_MOVEL">⚡ Milhão Maioria Móvel (5 velas contínuas)</option>
+            <option value="TREND_50S">🟢 Seguidor de Cor M1 (Verde=Rise / Vermelho=Fall)</option>
+            <option value="REVERSAL_50S">🔄 Reversão de Cor M1 (Verde=Fall / Vermelho=Rise)</option>
+          </select>
+        </div>
+
+        <!-- Tempo de Expiração -->
+        <div class="control-group" id="groupDuration">
+          <label>Tempo de Expiração</label>
+          <select id="ctrlDuration" onchange="onDurationChange()">
+            <option value="50s" selected>50 Segundos (50s) [Padrão Bot]</option>
+            <option value="60s">60 Segundos (1 Minuto / Fim da Vela M1)</option>
+            <option value="30s">30 Segundos (30s)</option>
+            <option value="15s">15 Segundos (15s)</option>
+            <option value="2m">2 Minutos (120s)</option>
+            <option value="5m">5 Minutos (M5 / 300s)</option>
           </select>
         </div>
 
@@ -568,7 +581,7 @@
               <th>Contexto / Análise Prévia</th>
               <th>Contrato</th>
               <th>Entrada (:00)</th>
-              <th>Saída (:60)</th>
+              <th id="thExitHeader">Saída (:50)</th>
               <th>Variação</th>
               <th>Resultado</th>
               <th>Stake</th>
@@ -790,11 +803,28 @@
       recalcSimulation();
     }
 
+    function onDurationChange() {
+      const dur = document.getElementById('ctrlDuration').value;
+      const thExit = document.getElementById('thExitHeader');
+      if (thExit) {
+        if (dur === '50s') thExit.innerText = 'Saída (:50)';
+        else if (dur === '60s') thExit.innerText = 'Saída (:60 / M1)';
+        else if (dur === '30s') thExit.innerText = 'Saída (:30)';
+        else if (dur === '15s') thExit.innerText = 'Saída (:15)';
+        else if (dur === '2m') thExit.innerText = 'Saída (+2m)';
+        else if (dur === '5m') thExit.innerText = 'Saída (+5m)';
+        else thExit.innerText = `Saída (${dur})`;
+      }
+      onStrategyChange();
+    }
+
     function onStrategyChange() {
       const st = document.getElementById('ctrlStrategy').value;
       const stBadge = document.getElementById('headerStrategyBadge');
       const grpStreakCount = document.getElementById('groupCandleStreakCount');
       const grpStreakDir = document.getElementById('groupCandleStreakDir');
+      const dur = document.getElementById('ctrlDuration') ? document.getElementById('ctrlDuration').value : '50s';
+      const durLabel = ` | Expiração: ${dur}`;
 
       if (st === 'REV_STREAK') {
         grpStreakCount.style.display = 'block';
@@ -802,34 +832,34 @@
         const n = document.getElementById('ctrlCandleStreakCount').value;
         const dir = document.getElementById('ctrlCandleStreakDir').value;
         const dirLabel = dir === 'BOTH' ? 'Ambas as Cores' : (dir === 'RED' ? 'Após Vermelhos (RISE)' : 'Após Verdes (FALL)');
-        stBadge.innerText = `Estratégia: Reversão após ${n} Velas (${dirLabel}) [50s]`;
+        stBadge.innerText = `Estratégia: Reversão após ${n} Velas (${dirLabel})${durLabel}`;
       } else {
         grpStreakCount.style.display = 'none';
         grpStreakDir.style.display = 'none';
         if (st === 'ALTERNADA_RISE_FALL') {
-          stBadge.innerText = 'Estratégia: Alternância Contínua (Inicia RISE -> FALL) [50s]';
+          stBadge.innerText = `Estratégia: Alternância Contínua (Inicia RISE -> FALL)${durLabel}`;
         } else if (st === 'ALTERNADA_FALL_RISE') {
-          stBadge.innerText = 'Estratégia: Alternância Contínua (Inicia FALL -> RISE) [50s]';
+          stBadge.innerText = `Estratégia: Alternância Contínua (Inicia FALL -> RISE)${durLabel}`;
         } else if (st === 'TRES_MOSQUETEIROS') {
-          stBadge.innerText = 'Estratégia: Três Mosqueteiros (Seguindo 3º Candle) [50s]';
+          stBadge.innerText = `Estratégia: Três Mosqueteiros (Seguindo 3º Candle)${durLabel}`;
         } else if (st === 'CONTRA_MOSQUETEIROS') {
-          stBadge.innerText = 'Estratégia: Contra Mosqueteiros (Reversão no 3º Candle) [50s]';
+          stBadge.innerText = `Estratégia: Contra Mosqueteiros (Reversão no 3º Candle)${durLabel}`;
         } else if (st === 'TRES_MOSQUETEIROS_ESTRITO') {
-          stBadge.innerText = 'Estratégia: Três Mosqueteiros Estrito (Ciclos Fechados) [50s]';
+          stBadge.innerText = `Estratégia: Três Mosqueteiros Estrito (Ciclos Fechados)${durLabel}`;
         } else if (st === 'MILHAO_MINORIA_M5') {
-          stBadge.innerText = 'Estratégia: Milhão Minoria (Blocos M5 / 50s)';
+          stBadge.innerText = `Estratégia: Milhão Minoria (Blocos M5)${durLabel}`;
         } else if (st === 'MILHAO_MAIORIA_M5') {
-          stBadge.innerText = 'Estratégia: Milhão Maioria (Blocos M5 / 50s)';
+          stBadge.innerText = `Estratégia: Milhão Maioria (Blocos M5)${durLabel}`;
         } else if (st === 'MILHAO_MINORIA_MOVEL') {
-          stBadge.innerText = 'Estratégia: Milhão Minoria Móvel (5 Velas / 50s)';
+          stBadge.innerText = `Estratégia: Milhão Minoria Móvel (5 Velas)${durLabel}`;
         } else if (st === 'MILHAO_MAIORIA_MOVEL') {
-          stBadge.innerText = 'Estratégia: Milhão Maioria Móvel (5 Velas / 50s)';
+          stBadge.innerText = `Estratégia: Milhão Maioria Móvel (5 Velas)${durLabel}`;
         } else if (st === 'TREND_50S') {
-          stBadge.innerText = 'Estratégia: Seguidor de Vela (50s)';
+          stBadge.innerText = `Estratégia: Seguidor de Cor M1${durLabel}`;
         } else if (st === 'REVERSAL_50S') {
-          stBadge.innerText = 'Estratégia: Reversão de Vela (50s)';
+          stBadge.innerText = `Estratégia: Reversão de Cor M1${durLabel}`;
         } else {
-          stBadge.innerText = 'Estratégia: Opções Deriv 50s';
+          stBadge.innerText = `Estratégia: Opções Deriv${durLabel}`;
         }
       }
 
